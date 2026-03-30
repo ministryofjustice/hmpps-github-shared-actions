@@ -1,0 +1,79 @@
+name: 'failure Slack message'
+description: 'Sends a slack message based on a file uploaded'
+inputs:
+  input_file:
+    description: "filename to be read into a string"
+    required: true
+    default: "results.txt"
+  channel_id:
+    description: "Slack channel to send to"
+    required: true
+  SLACK_BOT_TOKEN:
+    description: "important slack token"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: process slack message results # returns SLACK_TXT
+      id: slack_message_result
+      shell: bash
+      run: |
+        if [[ -f ${{ inputs.input_file }} ]]; then
+          echo "Processing file: ${{ inputs.input_file }}"
+          SLACK_TXT=$(cat "${{ inputs.input_file }}" | \
+            sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g;' | \
+            jq -Rs . | \
+            sed -E 's/("$)|(^")//g')
+          echo "SLACK_TXT=${SLACK_TXT}" 
+          echo "SLACK_TXT=${SLACK_TXT}" >> "$GITHUB_OUTPUT"
+        else
+          echo "SLACK_TXT=no results file (${{ inputs.input_file }}) created"
+          echo "SLACK_TXT=no results file (${{ inputs.input_file }}) created" >> "$GITHUB_OUTPUT"
+        fi
+    - uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+      with:
+        method: chat.postMessage
+        token: ${{ inputs.slack_bot_token }}
+        payload: >
+          {
+          "channel": ${{ inputs.channel_id }},
+          "text": ":stop: Github Actions ${{ github.workflow }} - ${{ github.event.workflow_run.conclusion }}",
+          "blocks": [
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": ":stop: Github Actions ${{ github.workflow }} - ${{ github.event.workflow_run.conclusion }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*${{ github.repository }}* ${{ github.workflow }} failed"
+              },
+              "accessory": {
+                  "type": "button",
+                "text": {
+                  "type": "plain_text",
+                  "text": "View job"
+                },
+                "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "Output: ```${{ steps.slack_message_result.outputs.SLACK_TXT }}```"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            }
+          ]
+          }

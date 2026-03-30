@@ -62,11 +62,6 @@ inputs:
     required: false
     default: 'true'
 
-outputs:
-  deployment_changelog:
-    description: "The changelog for the deployment"
-    value: ${{ steps.version_history.outputs.deployment_changelog }}
-
 runs:
   using: composite
   steps:
@@ -81,17 +76,6 @@ runs:
         kubectl config set-credentials cd-serviceaccount --token=${{ inputs.token }}
         kubectl config set-context ${{ inputs.cluster }} --cluster=${{ inputs.cluster }} --user=cd-serviceaccount --namespace=${{ inputs.namespace }}
         kubectl config use-context ${{ inputs.cluster }}
-
-    - name: get version history
-      uses: ministryofjustice/hmpps-github-actions/.github/actions/version_history@v2 # WORKFLOW VERSION
-      if: ${{ inputs.show_changelog }}
-      id: version_history
-      with:
-        app_version: ${{ inputs.version }}
-        environment: ${{ inputs.environment }}
-        namespace: ${{ inputs.namespace }}
-        k8s_deployment_name: ${{ inputs.k8s_deployment_name }}
-        changelog_git_paths: ${{ inputs.changelog_git_paths }}
 
     - name: Check for IP_ALLOWLIST_GROUPS_YAML
       shell: bash

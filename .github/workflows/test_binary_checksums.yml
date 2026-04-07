@@ -38,16 +38,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/tool-installers/setup-veracode-wrapper
 
-  test-schemaspy:
-    name: Test SchemaSpy checksum
+  test-database-schema-report:
+    name: Test SchemaSpy and PostgreSQL JDBC checksums
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./.github/actions/tool-installers/setup-schemaspy
-
-  test-postgres-jdbc:
-    name: Test PostgreSQL JDBC checksum
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./.github/actions/tool-installers/setup-postgres-jdbc
+      - uses: ./.github/actions/database_schema_report
+        with:
+          test_binary_installs: 'true'

@@ -1,0 +1,53 @@
+name: Test binary checksums
+
+on:
+  pull_request:
+    paths:
+      - '.github/actions/tool-installers/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-helm:
+    name: Test Helm checksum
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/tool-installers/setup-helm
+
+  test-kubectl:
+    name: Test kubectl checksum
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/tool-installers/setup-kubectl
+
+  test-wiremock:
+    name: Test WireMock checksum
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/tool-installers/setup-wiremock
+
+  test-veracode-wrapper:
+    name: Test Veracode wrapper checksum
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/tool-installers/setup-veracode-wrapper
+
+  test-schemaspy:
+    name: Test SchemaSpy checksum
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/tool-installers/setup-schemaspy
+
+  test-postgres-jdbc:
+    name: Test PostgreSQL JDBC checksum
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/tool-installers/setup-postgres-jdbc

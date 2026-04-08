@@ -8,21 +8,6 @@ inputs:
   version:
     description: The version of the service to deploy
     required: true
-  api:
-    description: The KUBE_ENV_API
-    required: true
-  cert:
-    description: The KUBE_CERT
-    required: true
-  cluster:
-    description: The KUBE_CLUSTER
-    required: true
-  namespace:
-    description: The KUBE_NAMESPACE
-    required: true
-  token:
-    description: The KUBE_TOKEN
-    required: true
   k8s_deployment_name:
     description: "Kubernetes deployment name, also Helm release name"
     required: true

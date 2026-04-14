@@ -8,4 +8,4 @@ updates:
       default-days: 7
     ignore:
       - dependency-name: "ministryofjustice/hmpps-github-actions"
-        versions: [">=0"]
+        versions: [">=2"] # WORKFLOW_VERSION

@@ -1,18 +1,37 @@
-name: Security CodeQL actions scan
+name: Security CodeQL Github Actions scan
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: "20 6 * * MON-FRI" # Every weekday
+    - cron: "20 6 * * MON-FRI"
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  security-codeql-actions-check:
+  security-codeql-scan:
+    name: Security CodeQL Github Actions scan
+    runs-on: ubuntu-latest
     permissions:
+      security-events: write
       contents: read
       actions: read
-      security-events: write
-    name: Project security CodeQL actions scan
-    uses: ministryofjustice/hmpps-github-actions/.github/workflows/security_codeql_actions.yml@v2 # WORKFLOW_VERSION
-    with:
-      channel_id: ${{ vars.SECURITY_ALERTS_SLACK_CHANNEL_ID || 'NO_SLACK' }}
-    secrets: inherit
-
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+      with:
+        languages: actions 
+    - name: Perform CodeQL Analysis
+      id: codeql_analysis
+      uses: github/codeql-action/analyze@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+    - name: CodeQL slack notification
+      uses: ./.github/actions/slack_codescan_notification
+      if: (failure() || steps.codeql_analysis.outcome == 'failure') && inputs.channel_id != 'NO_SLACK'
+      with:
+        title: "CodeQL Actions Scan"
+        warningOnly: ${{ steps.codeql_analysis.outcome == 'success' }}
+        channel_id: ${{ vars.SECURITY_ALERTS_SLACK_CHANNEL_ID || 'NO_SLACK' }}
+        SLACK_BOT_TOKEN: ${{ secrets.HMPPS_SRE_SLACK_BOT_TOKEN }}

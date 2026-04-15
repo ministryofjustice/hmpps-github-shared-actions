@@ -31,7 +31,7 @@ runs:
         method: chat.postMessage
         token: ${{ inputs.SLACK_BOT_TOKEN }}  
         payload: >
-          { "channel" : ${{ inputs.channel_id }},
+          { "channel" : "${{ inputs.channel_id }}",
             "text": "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && 'issues identified' || 'failed' }}",
             "blocks": [
               {

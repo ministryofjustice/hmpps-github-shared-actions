@@ -3,4 +3,4 @@ Shared actions for Github workflows to use
 
 This is to ensure we can use SHA pinning to access them.
 
-PUT NO WORKFLOWS IN HERE! (except the security scanning workflows for this particular repository)
+DO NOT PUT ANY SHARED WORKFLOWS HERE!  (workflows in this repo are for CI testing or building code in this particular repository.)

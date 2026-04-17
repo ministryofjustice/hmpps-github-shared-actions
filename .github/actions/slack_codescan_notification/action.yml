@@ -24,6 +24,29 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - if: ${{ inputs.summary != '' }}
+      id: format_summary
+      shell: bash
+      env:
+        RAW_SUMMARY: ${{ inputs.summary }}
+      run: |
+        # Normalize markdown-heavy scanner output so Slack renders it consistently.
+        summary="${RAW_SUMMARY//$'\r'/}"
+        summary="$(printf '%s' "$summary" | sed -E 's/^={3,}$//g')"
+        summary="$(printf '%s' "$summary" | sed -E 's/^##[[:space:]]+(.+)/*\1*/g')"
+        summary="${summary//```/`}"
+
+        max_len=2800
+        if [ ${#summary} -gt $max_len ]; then
+          summary="${summary:0:$max_len}\n...(truncated)"
+        fi
+
+        {
+          echo "summary_text<<EOF"
+          printf '%s\n' "$summary"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
     - if: ${{ inputs.summary == '' }}
       uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
       with:
@@ -83,6 +106,5 @@ runs:
               text:
                 type: mrkdwn
                 text: |
-                  *Summary*```
-                  ${{ inputs.summary }}
-                  ```
+                  *Summary*
+                  ${{ steps.format_summary.outputs.summary_text }}

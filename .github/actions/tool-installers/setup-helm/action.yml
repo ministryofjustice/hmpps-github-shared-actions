@@ -11,7 +11,7 @@ runs:
         # renovate: datasource=github-releases depName=helm/helm
         HELM_VERSION: v4.1.4
         # SHA256 from https://github.com/helm/helm/releases (linux-amd64)
-        HELM_SHA256: 3d07ca2ee9697589dc072e8da4b8510681e30a79db1f57ae5f143d1cd601efdd
+        HELM_SHA256: 70b2c30a19da4db264dfd68c8a3664e05093a361cefd89572ffb36f8abfa3d09
       run: |
         curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o helm.tar.gz
         echo "${HELM_SHA256}  helm.tar.gz" | sha256sum -c -

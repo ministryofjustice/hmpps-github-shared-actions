@@ -24,87 +24,52 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - if: ${{ inputs.summary != '' }}
-      id: format_summary
-      shell: bash
+    - uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
       env:
-        RAW_SUMMARY: ${{ inputs.summary }}
-      run: |
-        # Normalize markdown-heavy scanner output so Slack renders it consistently.
-        summary="${RAW_SUMMARY//$'\r'/}"
-        summary="$(printf '%s' "$summary" | sed -E 's/^={3,}$//g')"
-        summary="$(printf '%s' "$summary" | sed -E 's/^##[[:space:]]+(.+)/*\1*/g')"
-        summary="${summary//```/`}"
-
-        max_len=2800
-        if [ ${#summary} -gt $max_len ]; then
-          summary="${summary:0:$max_len}\n...(truncated)"
-        fi
-
-        {
-          echo "summary_text<<EOF"
-          printf '%s\n' "$summary"
-          echo "EOF"
-        } >> "$GITHUB_OUTPUT"
-
-    - if: ${{ inputs.summary == '' }}
-      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+        summary_block: "${{ inputs.summary != '' && format(',{{\"type\": \"section\",\"text\":{{\"type\":\"mrkdwn\",\"text\":\"*Summary*```\\n{0}\\n```\"}}}}', inputs.summary) || '' }}"
       with:
         method: chat.postMessage
-        token: ${{ inputs.SLACK_BOT_TOKEN }}
-        payload: |
-          channel: ${{ inputs.channel_id }}
-          text: "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && 'issues identified' || 'failed' }}"
-          blocks:
-            - type: section
-              text:
-                type: mrkdwn
-                text: "${{ inputs.warningOnly == 'true' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && 'ran and identified issues' || 'failed' }}"
-            - type: section
-              fields:
-                - type: mrkdwn
-                  text: "*Code scanning:*\n<${{ github.server_url }}/${{ github.repository }}/security/code-scanning>"
-            - type: section
-              fields:
-                - type: mrkdwn
-                  text: "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.workflow }}>"
-                - type: mrkdwn
-                  text: "*Job:*\n${{ github.job }}"
-                - type: mrkdwn
-                  text: "*Repo:*\n${{ github.repository }}"
-                - type: mrkdwn
-                  text: "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
-
-    - if: ${{ inputs.summary != '' }}
-      uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
-      with:
-        method: chat.postMessage
-        token: ${{ inputs.SLACK_BOT_TOKEN }}
-        payload: |
-          channel: ${{ inputs.channel_id }}
-          text: "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && 'issues identified' || 'failed' }}"
-          blocks:
-            - type: section
-              text:
-                type: mrkdwn
-                text: "${{ inputs.warningOnly == 'true' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && 'ran and identified issues' || 'failed' }}"
-            - type: section
-              fields:
-                - type: mrkdwn
-                  text: "*Code scanning:*\n<${{ github.server_url }}/${{ github.repository }}/security/code-scanning>"
-            - type: section
-              fields:
-                - type: mrkdwn
-                  text: "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.workflow }}>"
-                - type: mrkdwn
-                  text: "*Job:*\n${{ github.job }}"
-                - type: mrkdwn
-                  text: "*Repo:*\n${{ github.repository }}"
-                - type: mrkdwn
-                  text: "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
-            - type: section
-              text:
-                type: mrkdwn
-                text: |
-                  *Summary*
-                  ${{ steps.format_summary.outputs.summary_text }}
+        token: ${{ inputs.SLACK_BOT_TOKEN }}  
+        payload: >
+          { "channel" : "${{ inputs.channel_id }}",
+            "text": "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && 'issues identified' || 'failed' }}",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "${{ inputs.warningOnly == 'true' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && 'ran and identified issues' || 'failed' }}"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Code scanning:*\n<${{ github.server_url }}/${{ github.repository }}/security/code-scanning>"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.workflow }}>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Job:*\n${{ github.job }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repo:*\n${{ github.repository }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
+                  }
+                ]
+              }${{ env.summary_block }}
+            ]
+          }

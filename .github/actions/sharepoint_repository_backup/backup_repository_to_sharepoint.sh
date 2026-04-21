@@ -5,7 +5,7 @@ set -ueo pipefail
 # Validate required environment variables
 REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
 
-if [[ -z "${SHAREPOINT_SITE_URL}" || -z "${SHAREPOINT_FOLDER_URL}" || -z "${SP_CLIENT_ID}" || -z "${SP_CLIENT_SECRET}" || -z "${AZ_TENANT_ID}" || -z "${RETENTION_COUNT}" || -z "${ARCHIVE_PATH}" ]]; then
+if [[ -z "${SP_CLIENT_ID}" || -z "${SP_CLIENT_SECRET}" || -z "${AZ_TENANT_ID}" || -z "${RETENTION_COUNT}" || -z "${ARCHIVE_PATH}" ]]; then
   echo "Error: Missing required environment variables" >&2
   exit 1
 fi
@@ -23,9 +23,13 @@ if [[ ! -f "${ARCHIVE_PATH}" ]]; then
 fi
 
 SHAREPOINT_ACCESS_TOKEN=""
+GRAPH_HOST="justiceuk.sharepoint.com"
+GRAPH_SITE_PATH="HMPPSSRE"
 GRAPH_SITE_ID=""
 GRAPH_DRIVE_ID=""
 GRAPH_DOC_LIBRARY="Documents"
+# Full folder path: Documents/RepositoryBackup/{repo-name}
+FOLDER_PATH="RepositoryBackup/${REPOSITORY_NAME}"
 
 get_access_token() {
   echo "Fetching Graph access token from Azure AD..."
@@ -52,10 +56,6 @@ get_access_token() {
 init_graph_context() {
   echo "Resolving Graph site and drive IDs..."
 
-  # Parse site URL to extract host and site path
-  GRAPH_HOST=$(echo "${SHAREPOINT_SITE_URL}" | sed -E 's|https?://([^/]+)/.*|\1|')
-  GRAPH_SITE_PATH=$(echo "${SHAREPOINT_SITE_URL}" | sed -E 's|https?://[^/]+/sites/||')
-
   SITE_RESPONSE=$(curl -sS -X GET \
     -H "Authorization: Bearer ${SHAREPOINT_ACCESS_TOKEN}" \
     -H "Accept: application/json" \
@@ -81,7 +81,66 @@ init_graph_context() {
     exit 1
   fi
 
-  echo "Graph context resolved successfully."
+  echo "Graph context resolved successfully. Site ID: ${GRAPH_SITE_ID}, Drive ID: ${GRAPH_DRIVE_ID}"
+}
+
+ensure_folder_exists() {
+  echo "Ensuring folder '${FOLDER_PATH}' exists in drive..."
+
+  CHECK_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root:/${FOLDER_PATH}"
+  CHECK_HTTP_CODE=$(curl -sS -o /tmp/graph_folder_check.json -w "%{http_code}" -X GET \
+    -H "Authorization: Bearer ${SHAREPOINT_ACCESS_TOKEN}" \
+    -H "Accept: application/json" \
+    "${CHECK_URL}")
+
+  if [[ "${CHECK_HTTP_CODE}" == "200" ]]; then
+    echo "Folder already exists."
+    return 0
+  fi
+
+  if [[ "${CHECK_HTTP_CODE}" != "404" ]]; then
+    echo "Unexpected response checking folder. HTTP ${CHECK_HTTP_CODE}" >&2
+    cat /tmp/graph_folder_check.json >&2
+    exit 1
+  fi
+
+  # Folder does not exist — create it, including any missing parent folders
+  echo "Folder not found, creating '${FOLDER_PATH}'..."
+
+  # Split path and create each segment using the mkdir conflictBehavior=replace approach
+  PARENT_PATH=""
+  IFS='/' read -ra PATH_PARTS <<< "${FOLDER_PATH}"
+  for SEGMENT in "${PATH_PARTS[@]}"; do
+    if [[ -z "${SEGMENT}" ]]; then
+      continue
+    fi
+
+    if [[ -z "${PARENT_PATH}" ]]; then
+      CREATE_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root/children"
+    else
+      CREATE_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root:/${PARENT_PATH}:/children"
+    fi
+
+    CREATE_HTTP_CODE=$(curl -sS -o /tmp/graph_folder_create.json -w "%{http_code}" -X POST \
+      -H "Authorization: Bearer ${SHAREPOINT_ACCESS_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"${SEGMENT}\", \"folder\": {}, \"@microsoft.graph.conflictBehavior\": \"replace\"}" \
+      "${CREATE_URL}")
+
+    if [[ "${CREATE_HTTP_CODE}" -lt 200 ]] || [[ "${CREATE_HTTP_CODE}" -ge 300 ]]; then
+      echo "Error creating folder segment '${SEGMENT}'. HTTP ${CREATE_HTTP_CODE}" >&2
+      cat /tmp/graph_folder_create.json >&2
+      exit 1
+    fi
+
+    if [[ -z "${PARENT_PATH}" ]]; then
+      PARENT_PATH="${SEGMENT}"
+    else
+      PARENT_PATH="${PARENT_PATH}/${SEGMENT}"
+    fi
+  done
+
+  echo "Folder '${FOLDER_PATH}' created successfully."
 }
 
 upload_to_sharepoint() {
@@ -90,7 +149,7 @@ upload_to_sharepoint() {
   
   echo "Uploading ${FILE_NAME} to SharePoint..."
 
-  UPLOAD_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root:${SHAREPOINT_FOLDER_URL}/${FILE_NAME}:/content"
+  UPLOAD_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root:/${FOLDER_PATH}/${FILE_NAME}:/content"
 
   HTTP_CODE=$(curl -sS -o /tmp/graph_upload_response.json -w "%{http_code}" -X PUT \
       -H "Authorization: Bearer ${SHAREPOINT_ACCESS_TOKEN}" \
@@ -110,7 +169,7 @@ upload_to_sharepoint() {
 enforce_retention() {
   echo "Enforcing retention policy: keeping latest ${RETENTION_COUNT} backup(s)..."
 
-  LIST_FILES_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root:${SHAREPOINT_FOLDER_URL}:/children?\$select=id,name,lastModifiedDateTime"
+  LIST_FILES_URL="https://graph.microsoft.com/v1.0/drives/${GRAPH_DRIVE_ID}/root:/${FOLDER_PATH}:/children?\$select=id,name,lastModifiedDateTime"
   RESPONSE=$(curl -sS -X GET \
       -H "Authorization: Bearer ${SHAREPOINT_ACCESS_TOKEN}" \
       -H "Accept: application/json" \
@@ -162,6 +221,7 @@ enforce_retention() {
 # Main execution
 get_access_token
 init_graph_context
+ensure_folder_exists
 upload_to_sharepoint "${ARCHIVE_PATH}"
 enforce_retention
 

@@ -3,7 +3,9 @@
 set -ueo pipefail
 
 # Validate required environment variables
-if [[ -z "${SHAREPOINT_SITE_URL}" || -z "${SHAREPOINT_FOLDER_URL}" || -z "${SP_CLIENT_ID}" || -z "${SP_CLIENT_SECRET}" || -z "${AZ_TENANT_ID}" || -z "${RETENTION_COUNT}" || -z "${REPOSITORY_NAME}" || -z "${ARCHIVE_PATH}" ]]; then
+REPOSITORY_NAME="${GITHUB_REPOSITORY#*/}"
+
+if [[ -z "${SHAREPOINT_SITE_URL}" || -z "${SHAREPOINT_FOLDER_URL}" || -z "${SP_CLIENT_ID}" || -z "${SP_CLIENT_SECRET}" || -z "${AZ_TENANT_ID}" || -z "${RETENTION_COUNT}" || -z "${ARCHIVE_PATH}" ]]; then
   echo "Error: Missing required environment variables" >&2
   exit 1
 fi

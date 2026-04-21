@@ -53,5 +53,4 @@ runs:
         SP_CLIENT_SECRET: ${{ inputs.sharepoint_client_secret }}
         AZ_TENANT_ID: ${{ inputs.azure_tenant_id }}
         RETENTION_COUNT: ${{ inputs.retention_count }}
-        REPOSITORY_NAME: ${{ github.event.repository.name }}
         ARCHIVE_PATH: ${{ steps.create-archive.outputs.archive_path }}

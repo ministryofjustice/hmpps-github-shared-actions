@@ -1,0 +1,57 @@
+name: Backup repository to SharePoint
+description: Create a backup archive of the calling repository and upload it to SharePoint with retention cleanup
+inputs:
+  sharepoint_site_url:
+    description: 'SharePoint site URL, for example https://tenant.sharepoint.com/sites/my-site'
+    required: true
+  sharepoint_folder_server_relative_url:
+    description: 'Target folder server-relative URL, for example /sites/my-site/Shared Documents/repository-backups'
+    required: true
+  sharepoint_client_id:
+    description: 'Azure app registration client ID with access to the target SharePoint site'
+    required: true
+  sharepoint_client_secret:
+    description: 'Azure app registration client secret'
+    required: true
+  azure_tenant_id:
+    description: 'Azure tenant ID for authentication'
+    required: true
+  retention_count:
+    description: 'Number of most recent backups to retain for this repository'
+    required: false
+    default: '5'
+outputs:
+  backup_file_name:
+    description: 'Uploaded backup file name'
+    value: ${{ steps.create-archive.outputs.archive_name }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+    - name: Create repository archive
+      id: create-archive
+      shell: bash
+      run: |
+        timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+        archive_name="${GITHUB_REPOSITORY#*/}-${timestamp}.tar.gz"
+        archive_path="$RUNNER_TEMP/$archive_name"
+
+        git -C "$GITHUB_WORKSPACE" archive --format=tar.gz --output "$archive_path" HEAD
+
+        echo "archive_path=$archive_path" >> "$GITHUB_OUTPUT"
+        echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
+
+    - name: Upload archive and enforce retention
+      shell: bash
+      run: bash "${{ github.action_path }}/backup_repository_to_sharepoint.sh"
+      env:
+        SHAREPOINT_SITE_URL: ${{ inputs.sharepoint_site_url }}
+        SHAREPOINT_FOLDER_URL: ${{ inputs.sharepoint_folder_server_relative_url }}
+        SP_CLIENT_ID: ${{ inputs.sharepoint_client_id }}
+        SP_CLIENT_SECRET: ${{ inputs.sharepoint_client_secret }}
+        AZ_TENANT_ID: ${{ inputs.azure_tenant_id }}
+        RETENTION_COUNT: ${{ inputs.retention_count }}
+        REPOSITORY_NAME: ${{ github.event.repository.name }}
+        ARCHIVE_PATH: ${{ steps.create-archive.outputs.archive_path }}

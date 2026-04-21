@@ -15,27 +15,16 @@ Example usage from a consumer repository workflow:
 
 ```yaml
 jobs:
-  backup-repository:
+  backup:
+    name: Backup to SharePoint
     runs-on: ubuntu-latest
+    env:
+      SP_CLIENT_ID: ${{ secrets.SHAREPOINT_CLIENT_ID }}
+      SP_CLIENT_SECRET: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
+      AZ_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
       - name: Backup repository to SharePoint
-        uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/sharepoint_repository_backup@<sha>
+        uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/sharepoint_repository_backup@feat/HEAT-966
         with:
-          sharepoint_site_url: ${{ secrets.SHAREPOINT_SITE_URL }}
-          sharepoint_folder_server_relative_url: ${{ secrets.SHAREPOINT_FOLDER_SERVER_RELATIVE_URL }}
-          sharepoint_client_id: ${{ secrets.SHAREPOINT_CLIENT_ID }}
-          sharepoint_client_secret: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
-          azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
-          retention_count: 5
+          retention_count: 5   # optional, defaults to 5
 ```
-
-Suggested org-level secrets:
-
-- `SHAREPOINT_SITE_URL`
-- `SHAREPOINT_FOLDER_SERVER_RELATIVE_URL`
-- `SHAREPOINT_CLIENT_ID`
-- `SHAREPOINT_CLIENT_SECRET`
-- `AZURE_TENANT_ID`

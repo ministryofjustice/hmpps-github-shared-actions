@@ -26,7 +26,6 @@ runs:
         git -C "$GITHUB_WORKSPACE" archive --format=tar.gz --output "$archive_path" HEAD
 
         echo "archive_path=$archive_path" >> "$GITHUB_OUTPUT"
-        echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
 
     - name: Upload archive and enforce retention
       shell: bash

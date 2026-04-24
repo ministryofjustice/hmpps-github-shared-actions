@@ -23,8 +23,8 @@ if [[ ! -f "${ARCHIVE_PATH}" ]]; then
 fi
 
 SHAREPOINT_ACCESS_TOKEN=""
-GRAPH_HOST="justiceuk.sharepoint.com"
-GRAPH_SITE_PATH="HMPPSSRE"
+GRAPH_HOST="${GRAPH_HOST:-justiceuk.sharepoint.com}"
+GRAPH_SITE_PATH="${GRAPH_SITE_PATH:-HMPPSSRE}"
 GRAPH_SITE_ID=""
 GRAPH_DRIVE_ID=""
 GRAPH_DOC_LIBRARY="Documents"

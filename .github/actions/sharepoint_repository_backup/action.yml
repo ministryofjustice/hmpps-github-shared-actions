@@ -1,0 +1,35 @@
+name: Backup repository to SharePoint
+description: Create a backup archive of the calling repository and upload it to SharePoint with retention cleanup
+inputs:
+  retention_count:
+    description: 'Number of most recent backups to retain for this repository'
+    required: false
+    default: '5'
+outputs:
+  backup_file_name:
+    description: 'Uploaded backup file name'
+    value: ${{ steps.create-archive.outputs.archive_name }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+    - name: Create repository archive
+      id: create-archive
+      shell: bash
+      run: |
+        timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+        archive_name="${GITHUB_REPOSITORY#*/}-${timestamp}.tar.gz"
+        archive_path="$RUNNER_TEMP/$archive_name"
+
+        git -C "$GITHUB_WORKSPACE" archive --format=tar.gz --output "$archive_path" HEAD
+
+        echo "archive_path=$archive_path" >> "$GITHUB_OUTPUT"
+
+    - name: Upload archive and enforce retention
+      shell: bash
+      run: bash "${{ github.action_path }}/backup_repository_to_sharepoint.sh"
+      env:
+        RETENTION_COUNT: ${{ inputs.retention_count }}
+        ARCHIVE_PATH: ${{ steps.create-archive.outputs.archive_path }}

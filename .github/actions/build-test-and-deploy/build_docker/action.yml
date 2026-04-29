@@ -1,6 +1,17 @@
 name: Build and push docker image to registry
 description: 'action to build and push docker image'
 
+outputs:
+  digest:
+    description: Pushed image digest
+    value: ${{ steps.build_image.outputs.digest }}
+  imageid:
+    description: Built image ID
+    value: ${{ steps.build_image.outputs.imageid }}
+  metadata:
+    description: Build metadata JSON
+    value: ${{ steps.build_image.outputs.metadata }}
+
 inputs:
   image_name:
     description: Image name
@@ -123,6 +134,7 @@ runs:
         echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
     - name: Build Docker Image
+      id: build_image
       uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7
       with:
         cache-from: type=gha

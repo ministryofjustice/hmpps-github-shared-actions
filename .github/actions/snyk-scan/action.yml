@@ -98,6 +98,23 @@ runs:
       shell: bash
       run: npm install -g "snyk@${{ inputs.snyk_cli_version }}"
 
+    - name: Validate Snyk authentication
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk_token }}
+      run: |
+        # Normalize token in case a trailing newline was accidentally stored in the secret.
+        normalized_token="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+        if [[ -z "$normalized_token" ]]; then
+          echo "SNYK_TOKEN is empty. Configure a valid token in repository/org secrets."
+          exit 1
+        fi
+
+        if ! SNYK_TOKEN="$normalized_token" snyk auth "$normalized_token" >/dev/null 2>&1; then
+          echo "Snyk authentication failed. Check token validity/org access and confirm the secret value is current."
+          exit 1
+        fi
+
     - name: Resolve severity threshold
       id: severity
       shell: bash
@@ -122,6 +139,7 @@ runs:
       env:
         SNYK_TOKEN: ${{ inputs.snyk_token }}
       run: |
+        export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
         image_ref="${{ steps.check-package-repo.outputs.repo }}/${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:latest"
         set +e
         snyk container test "$image_ref" \
@@ -142,6 +160,7 @@ runs:
       env:
         SNYK_TOKEN: ${{ inputs.snyk_token }}
       run: |
+        export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
         set +e
         snyk test "${{ inputs.location }}" \
           --all-projects \

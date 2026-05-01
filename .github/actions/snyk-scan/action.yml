@@ -322,6 +322,8 @@ runs:
           selected_severities_json='["high","critical"]'
         fi
 
+        selected_severities_label=$(echo "$selected_severities_json" | jq -r 'map(ascii_upcase) | join(", ")')
+
         results_count=$(jq '[.runs[0].results[]?] | length' snyk-results.sarif)
 
         critical_count=$(jq '
@@ -388,6 +390,24 @@ runs:
         # Prefer JSON-derived counts (same source as top findings), fallback remains SARIF above.
         if [[ -s snyk-results.json ]]; then
           json_counts=$(jq -r --argjson selected "$selected_severities_json" '
+            def norm_sev($v):
+              (
+                $v.severity
+                // $v.effectiveSeverity
+                // $v.issueData.severity
+                // $v.severityLevel
+                // $v.metadata.severity
+                // "unknown"
+              )
+              | tostring
+              | ascii_downcase
+              | if . == "moderate" then "medium"
+                elif . == "error" then "high"
+                elif . == "warning" then "medium"
+                elif . == "note" then "low"
+                elif . == "none" then "low"
+                else .
+                end;
             [
               (
                 if (.vulnerabilities? | type) == "array" then
@@ -405,7 +425,7 @@ runs:
               )
               | {
                   rule: (.id // "issue"),
-                  severity: ((.severity // "unknown") | ascii_downcase),
+                  severity: norm_sev(.),
                   component: (
                     if (.packageName? // .name?) then
                       ((.packageName // .name) + "@" + (.version // "unknown"))
@@ -445,6 +465,24 @@ runs:
 
         if [[ -s snyk-results.json ]]; then
           top_findings=$(jq -r --argjson selected "$selected_severities_json" '
+            def norm_sev($v):
+              (
+                $v.severity
+                // $v.effectiveSeverity
+                // $v.issueData.severity
+                // $v.severityLevel
+                // $v.metadata.severity
+                // "unknown"
+              )
+              | tostring
+              | ascii_downcase
+              | if . == "moderate" then "medium"
+                elif . == "error" then "high"
+                elif . == "warning" then "medium"
+                elif . == "note" then "low"
+                elif . == "none" then "low"
+                else .
+                end;
             def rank:
               if . == "critical" then 0
               elif . == "high" then 1
@@ -469,7 +507,7 @@ runs:
               )
               | {
                   rule: (.id // "issue"),
-                  severity: ((.severity // "unknown") | ascii_downcase),
+                  severity: norm_sev(.),
                   component: (
                     if (.packageName? // .name?) then
                       ((.packageName // .name) + "@" + (.version // "unknown"))
@@ -481,7 +519,7 @@ runs:
                   disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 }
             ]
-            | map(select(.severity == "critical" or .severity == "high"))
+            | map(select(($selected | index(.severity)) != null))
             | unique_by(.rule + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
             | sort_by(.severity | rank)
             | .[]
@@ -518,7 +556,7 @@ runs:
                 component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown")
               }
             ]
-            | map(select(.severity == "critical" or .severity == "high"))
+            | map(select(($selected | index(.severity)) != null))
             | sort_by(.severity | rank)
             | .[]
             | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a Link: https://security.snyk.io/vuln/\(.rule)"
@@ -537,7 +575,7 @@ runs:
                   else .
                   end);
             .runs[0].results[]?
-            | select(sev == "critical" or sev == "high")
+            | select(($selected | index(sev)) != null)
             | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a Link: https://security.snyk.io/vuln/\(.ruleId // "issue")"
           ' snyk-results.sarif)
         fi
@@ -545,12 +583,16 @@ runs:
         if [[ "$results_count" -gt 0 ]]; then
           if [[ -n "$top_findings" ]]; then
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
+            slack_summary+=$'\nFiltered severities: '
+            slack_summary+="${selected_severities_label}"
             slack_summary+=$'\nSource: '
             slack_summary+="${summary_source}"
-            slack_summary+=$'\nCritical/High findings:\n'
+            slack_summary+=$'\nFindings:\n'
             slack_summary+="${top_findings}"
           else
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
+            slack_summary+=$'\nFiltered severities: '
+            slack_summary+="${selected_severities_label}"
             slack_summary+=$'\nSource: '
             slack_summary+="${summary_source}"
           fi

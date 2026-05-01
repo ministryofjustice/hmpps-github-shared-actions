@@ -25,6 +25,10 @@ inputs:
   snyk_token:
     description: 'Snyk token for authentication'
     required: true
+  snyk_cli_version:
+    description: 'Pinned Snyk CLI version to install'
+    required: false
+    default: '1.1296.0'
   ECR_REGION:
     description: 'The AWS region that the ECR repository was created in'
     required: false
@@ -73,18 +77,18 @@ runs:
 
     - name: Configure AWS credentials
       if: ${{ inputs.ECR_ROLE_TO_ASSUME != '' && inputs.scan_type == 'image' }}
-      uses: aws-actions/configure-aws-credentials@v6
+      uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
       with:
         role-to-assume: ${{ inputs.ECR_ROLE_TO_ASSUME }}
         aws-region: ${{ inputs.ECR_REGION }}
 
     - name: Login to Amazon ECR
       if: ${{ inputs.ECR_ROLE_TO_ASSUME != '' && inputs.scan_type == 'image' }}
-      uses: aws-actions/amazon-ecr-login@v2
+      uses: aws-actions/amazon-ecr-login@19d944daaa35f0fa1d3f7f8af1d3f2e5de25c5b7 # v2.1.4
 
     - name: Login to GHCR for private images
       if: ${{ inputs.scan_type == 'image' && startsWith(steps.check-package-repo.outputs.repo, 'ghcr.io/') && github.event.repository.visibility != 'public' }}
-      uses: docker/login-action@v3
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -92,7 +96,7 @@ runs:
 
     - name: Install Snyk CLI
       shell: bash
-      run: npm install -g snyk
+      run: npm install -g "snyk@${{ inputs.snyk_cli_version }}"
 
     - name: Resolve severity threshold
       id: severity
@@ -121,6 +125,7 @@ runs:
         image_ref="${{ steps.check-package-repo.outputs.repo }}/${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:latest"
         set +e
         snyk container test "$image_ref" \
+          --app-vulns \
           --severity-threshold="${{ steps.severity.outputs.threshold }}" \
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?
@@ -150,7 +155,7 @@ runs:
         fi
 
     - name: Upload Snyk artifact
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       id: snyk-upload-artifact
       with:
         name: snyk-check-${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}
@@ -159,10 +164,10 @@ runs:
     - name: Snyk upload sarif
       continue-on-error: true
       id: snyk-upload
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
       with:
         sarif_file: 'snyk-results.sarif'
-        category: snyk-dependency-check
+        category: ${{ inputs.scan_type == 'image' && 'snyk-image-scan' || 'snyk-fs-scan' }}
 
     - name: Prepare Snyk summary
       id: snyk-summary
@@ -176,14 +181,80 @@ runs:
 
         results_count=$(jq '[.runs[0].results[]?] | length' snyk-results.sarif)
 
-        critical_count=$(jq '[.runs[0].results[]? | select((((.properties.tags // []) | map(select(startswith("severity:"))) | .[0] // "severity:unknown") | split(":")[1]) == "critical")] | length' snyk-results.sarif)
-        high_count=$(jq '[.runs[0].results[]? | select((((.properties.tags // []) | map(select(startswith("severity:"))) | .[0] // "severity:unknown") | split(":")[1]) == "high")] | length' snyk-results.sarif)
-        medium_count=$(jq '[.runs[0].results[]? | select((((.properties.tags // []) | map(select(startswith("severity:"))) | .[0] // "severity:unknown") | split(":")[1]) == "medium")] | length' snyk-results.sarif)
-        low_count=$(jq '[.runs[0].results[]? | select((((.properties.tags // []) | map(select(startswith("severity:"))) | .[0] // "severity:unknown") | split(":")[1]) == "low")] | length' snyk-results.sarif)
+        critical_count=$(jq '
+          def sev:
+            (
+              ((.properties.tags // []) | map(select(startswith("severity:"))) | .[0]? | split(":")[1]) //
+              (.properties.severity? // .level? // "unknown")
+            )
+            | ascii_downcase
+            | if . == "error" then "high"
+              elif . == "warning" then "medium"
+              elif . == "note" then "low"
+              elif . == "none" then "low"
+              else .
+              end;
+          [.runs[0].results[]? | select((sev) == "critical")] | length
+        ' snyk-results.sarif)
+        high_count=$(jq '
+          def sev:
+            (
+              ((.properties.tags // []) | map(select(startswith("severity:"))) | .[0]? | split(":")[1]) //
+              (.properties.severity? // .level? // "unknown")
+            )
+            | ascii_downcase
+            | if . == "error" then "high"
+              elif . == "warning" then "medium"
+              elif . == "note" then "low"
+              elif . == "none" then "low"
+              else .
+              end;
+          [.runs[0].results[]? | select((sev) == "high")] | length
+        ' snyk-results.sarif)
+        medium_count=$(jq '
+          def sev:
+            (
+              ((.properties.tags // []) | map(select(startswith("severity:"))) | .[0]? | split(":")[1]) //
+              (.properties.severity? // .level? // "unknown")
+            )
+            | ascii_downcase
+            | if . == "error" then "high"
+              elif . == "warning" then "medium"
+              elif . == "note" then "low"
+              elif . == "none" then "low"
+              else .
+              end;
+          [.runs[0].results[]? | select((sev) == "medium")] | length
+        ' snyk-results.sarif)
+        low_count=$(jq '
+          def sev:
+            (
+              ((.properties.tags // []) | map(select(startswith("severity:"))) | .[0]? | split(":")[1]) //
+              (.properties.severity? // .level? // "unknown")
+            )
+            | ascii_downcase
+            | if . == "error" then "high"
+              elif . == "warning" then "medium"
+              elif . == "note" then "low"
+              elif . == "none" then "low"
+              else .
+              end;
+          [.runs[0].results[]? | select((sev) == "low")] | length
+        ' snyk-results.sarif)
 
         top_findings=$(jq -r '
           def sev:
-            (((.properties.tags // []) | map(select(startswith("severity:"))) | .[0] // "severity:unknown") | split(":")[1]);
+            (
+              ((.properties.tags // []) | map(select(startswith("severity:"))) | .[0]? | split(":")[1]) //
+              (.properties.severity? // .level? // "unknown")
+            )
+            | ascii_downcase
+            | if . == "error" then "high"
+              elif . == "warning" then "medium"
+              elif . == "note" then "low"
+              elif . == "none" then "low"
+              else .
+              end;
           def rank:
             if . == "critical" then 0
             elif . == "high" then 1
@@ -199,6 +270,7 @@ runs:
               message: ((.message.text // "") | gsub("[\\r\\n]+"; " "))
             }
           ]
+          | unique_by(.rule + "|" + .severity)
           | sort_by(.severity | rank)
           | .[:5]
           | .[]

@@ -17,6 +17,10 @@ inputs:
     description: 'For gradle multi module projects, leave blank for single module projects'
     required: false
     default: ''
+  scan_context:
+    description: 'Scan context (for example image or fs)'
+    required: false
+    default: ''
   summary:
     description: 'A summary of vulnerabilities'
     required: false
@@ -51,6 +55,8 @@ runs:
                   text: "*Repo:*\n${{ github.repository }}"
                 - type: mrkdwn
                   text: "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
+                - type: mrkdwn
+                  text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
 
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2
       if: inputs.summary != ''
@@ -79,6 +85,8 @@ runs:
                   text: "*Repo:*\n${{ github.repository }}"
                 - type: mrkdwn
                   text: "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
+                - type: mrkdwn
+                  text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
             - type: section
               text:
                 type: mrkdwn

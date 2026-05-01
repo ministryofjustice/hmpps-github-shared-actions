@@ -350,49 +350,6 @@ runs:
         fi
 
         summary_source="SARIF fallback"
-        selected_severities_json=$(printf '%s' "${{ inputs.severity }}" \
-          | tr '[:upper:]' '[:lower:]' \
-          | tr -d ' ' \
-          | jq -R 'split(",") | map(select(length > 0) | if . == "moderate" then "medium" else . end) | unique')
-        if [[ -z "$selected_severities_json" || "$selected_severities_json" == "[]" ]]; then
-          selected_severities_json='["high","critical"]'
-        fi
-
-        effective_threshold='${{ steps.severity.outputs.threshold }}'
-        if [[ -s snyk-results.json ]]; then
-          json_threshold=$(jq -r '
-            def root:
-              if type == "array" then
-                ([.[] | select(type == "object") | .severityThreshold? | select(. != null and . != "")][0] // empty)
-              else
-                (if type == "object" then (.severityThreshold? // empty) else empty end)
-              end;
-            root
-            | tostring
-            | ascii_downcase
-            | if . == "moderate" then "medium" else . end
-          ' snyk-results.json 2>/dev/null || true)
-          if [[ -n "$json_threshold" ]]; then
-            effective_threshold="$json_threshold"
-          fi
-        fi
-
-        case "$effective_threshold" in
-          low)
-            selected_severities_json='["critical","high","medium","low"]'
-            ;;
-          medium)
-            selected_severities_json='["critical","high","medium"]'
-            ;;
-          high)
-            selected_severities_json='["critical","high"]'
-            ;;
-          critical)
-            selected_severities_json='["critical"]'
-            ;;
-        esac
-
-        selected_severities_label=$(echo "$selected_severities_json" | jq -r 'map(ascii_upcase) | join(", ")')
 
         results_count=$(jq '[.runs[0].results[]?] | length' snyk-results.sarif)
 
@@ -459,7 +416,7 @@ runs:
 
         # Prefer JSON-derived counts (same source as top findings), fallback remains SARIF above.
         if [[ -s snyk-results.json ]]; then
-          json_counts=$(jq -r --argjson selected "$selected_severities_json" '
+          json_counts=$(jq -r '
             def roots:
               if type == "array" then .[] else . end;
             def each_vuln:
@@ -524,7 +481,6 @@ runs:
                   )
                 }
             ]
-            | map(select(($selected | index(.severity)) != null))
             | unique_by(.rule + "|" + .severity + "|" + .component)
             | {
                 total: length,
@@ -553,7 +509,7 @@ runs:
         top_findings=""
 
         if [[ -s snyk-results.json ]]; then
-          top_findings=$(jq -r --argjson selected "$selected_severities_json" '
+          top_findings=$(jq -r '
             def roots:
               if type == "array" then .[] else . end;
             def each_vuln:
@@ -636,7 +592,7 @@ runs:
                   disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 }
             ]
-            | map(select(($selected | index(.severity)) != null))
+            | map(select(.severity == "critical" or .severity == "high"))
             | unique_by(.rule + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
             | sort_by(.severity | rank)
             | .[]
@@ -645,7 +601,7 @@ runs:
         fi
 
         if [[ -z "$top_findings" ]]; then
-          top_findings=$(jq -r --argjson selected "$selected_severities_json" '
+          top_findings=$(jq -r '
             def sev:
               (
                 ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
@@ -673,7 +629,7 @@ runs:
                 component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown")
               }
             ]
-            | map(select(($selected | index(.severity)) != null))
+            | map(select(.severity == "critical" or .severity == "high"))
             | sort_by(.severity | rank)
             | .[]
             | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a"
@@ -682,7 +638,7 @@ runs:
 
         # Fallback for SARIF variants where nested location fields are missing/unexpected.
         if [[ "$results_count" -gt 0 && -z "$top_findings" ]]; then
-          top_findings=$(jq -r --argjson selected "$selected_severities_json" '
+          top_findings=$(jq -r '
             def sev:
               ((.level? // "unknown") | ascii_downcase
                 | if . == "error" then "high"
@@ -692,7 +648,7 @@ runs:
                   else .
                   end);
             .runs[0].results[]?
-            | select(($selected | index(sev)) != null)
+            | select(sev == "critical" or sev == "high")
             | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
           ' snyk-results.sarif)
         fi
@@ -700,16 +656,12 @@ runs:
         if [[ "$results_count" -gt 0 ]]; then
           if [[ -n "$top_findings" ]]; then
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
-            slack_summary+=$'\nFiltered severities: '
-            slack_summary+="${selected_severities_label}"
             slack_summary+=$'\nSource: '
             slack_summary+="${summary_source}"
             slack_summary+=$'\nFindings:\n'
             slack_summary+="${top_findings}"
           else
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
-            slack_summary+=$'\nFiltered severities: '
-            slack_summary+="${selected_severities_label}"
             slack_summary+=$'\nSource: '
             slack_summary+="${summary_source}"
           fi

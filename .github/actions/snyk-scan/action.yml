@@ -301,18 +301,27 @@ runs:
               elif . == "low" then 3
               else 4
               end;
-            def docs:
-              if type == "array" then .[] else . end;
-
             [
-              docs
-              | .vulnerabilities[]?
+              (
+                if (.vulnerabilities? | type) == "array" then
+                  .vulnerabilities[]
+                else
+                  empty
+                end
+              ),
+              (
+                if (.applications? | type) == "array" then
+                  .applications[] | .vulnerabilities[]?
+                else
+                  empty
+                end
+              )
               | {
                   rule: (.id // "issue"),
                   severity: ((.severity // "unknown") | ascii_downcase),
                   component: (
                     if (.packageName? // .name?) then
-                      ((.packageName // .name) + "@" + (.version // .versionFrom // "unknown"))
+                      ((.packageName // .name) + "@" + (.version // "unknown"))
                     else
                       "unknown"
                     end
@@ -321,6 +330,7 @@ runs:
                   disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 }
             ]
+            | unique_by(.rule + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
             | sort_by(.severity | rank)
             | .[:5]
             | .[]

@@ -475,7 +475,7 @@ runs:
             | sort_by(.severity | rank)
             | .[:5]
             | .[]
-            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end))"
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end)) Link: <https://security.snyk.io/vuln/\(.rule)|\(.rule)>"
           ' snyk-results.json)
         fi
 
@@ -511,7 +511,7 @@ runs:
             | sort_by(.severity | rank)
             | .[:5]
             | .[]
-            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a"
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a Link: <https://security.snyk.io/vuln/\(.rule)|\(.rule)>"
           ' snyk-results.sarif)
         fi
 
@@ -527,7 +527,7 @@ runs:
                   else .
                   end);
             .runs[0].results[]?
-            | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
+            | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a Link: <https://security.snyk.io/vuln/\(.ruleId // "issue")|\(.ruleId // "issue")>"
           ' snyk-results.sarif | head -n 5)
         fi
 

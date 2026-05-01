@@ -63,7 +63,7 @@ runs:
       id: prepare-summary
       shell: bash
       run: |
-        summary_json=$(printf '%s' "${{ inputs.summary }}" | jq -Rs '"*Summary*\n```\n" + (gsub("\\r"; "")) + "\n```"')
+        summary_json=$(printf '%s' "${{ inputs.summary }}" | jq -Rs '"*Summary*\n" + (gsub("\\r"; ""))')
         echo "summary_json=${summary_json}" >> "$GITHUB_OUTPUT"
 
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2

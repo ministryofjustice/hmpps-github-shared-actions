@@ -311,23 +311,27 @@ runs:
             | {
               rule: (.ruleId // "issue"),
               severity: sev,
+              component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown"),
               message: ((.message.text // "") | gsub("[\\r\\n]+"; " "))
             }
           ]
-          | unique_by(.rule + "|" + .severity)
           | sort_by(.severity | rank)
           | .[:5]
           | .[]
-          | "- \(.rule) [\(.severity)] \(.message[0:160])"
-        ' snyk-results.sarif | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g')
+          | "- \(.rule) [\(.severity)] (\(.component)) \(.message[0:140])"
+        ' snyk-results.sarif)
 
         if [[ "$results_count" -gt 0 ]]; then
           if [[ -n "$top_findings" ]]; then
-            slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})\\nTop findings:\\n${top_findings}"
+            slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
+            slack_summary+=$'\nTop findings:\n'
+            slack_summary+="${top_findings}"
           else
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
           fi
-          slack_summary="$(echo "${slack_summary}" | awk '{if (length($0) >= 3000) print substr($0, 1, 2997) "..."; else print $0}')"
+          if [[ ${#slack_summary} -gt 3000 ]]; then
+            slack_summary="${slack_summary:0:2997}..."
+          fi
         else
           slack_summary="No vulnerabilities found"
           top_findings=""
@@ -338,5 +342,11 @@ runs:
         echo "high_count=${high_count}" >> "$GITHUB_OUTPUT"
         echo "medium_count=${medium_count}" >> "$GITHUB_OUTPUT"
         echo "low_count=${low_count}" >> "$GITHUB_OUTPUT"
-        echo "top_findings=${top_findings}" >> "$GITHUB_OUTPUT"
-        echo "summary=${slack_summary}" >> "$GITHUB_OUTPUT"
+        {
+          echo "top_findings<<EOF"
+          echo "${top_findings}"
+          echo "EOF"
+          echo "summary<<EOF"
+          echo "${slack_summary}"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"

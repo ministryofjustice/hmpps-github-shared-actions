@@ -18,6 +18,10 @@ inputs:
     description: 'A location for scans to take place'
     required: false
     default: '.'
+  snyk_policy_path:
+    description: 'Optional path to .snyk policy file used for ignore rules'
+    required: false
+    default: ''
   github_token:
     description: 'GitHub token for authentication'
     required: false
@@ -138,10 +142,22 @@ runs:
       run: |
         export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
         image_ref="${{ steps.check-package-repo.outputs.repo }}/${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:latest"
+
+        policy_path="${{ inputs.snyk_policy_path }}"
+        if [[ -z "$policy_path" ]]; then
+          policy_path="${{ inputs.location }}/.snyk"
+        fi
+        policy_arg=""
+        if [[ -f "$policy_path" ]]; then
+          policy_arg="--policy-path=${policy_path}"
+          echo "Applying Snyk policy file: ${policy_path}"
+        fi
+
         set +e
         snyk container test "$image_ref" \
           --app-vulns \
           --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+          ${policy_arg:+$policy_arg} \
           --json-file-output=snyk-results.json \
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?
@@ -159,10 +175,22 @@ runs:
         SNYK_TOKEN: ${{ inputs.snyk_token }}
       run: |
         export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+
+        policy_path="${{ inputs.snyk_policy_path }}"
+        if [[ -z "$policy_path" ]]; then
+          policy_path="${{ inputs.location }}/.snyk"
+        fi
+        policy_arg=""
+        if [[ -f "$policy_path" ]]; then
+          policy_arg="--policy-path=${policy_path}"
+          echo "Applying Snyk policy file: ${policy_path}"
+        fi
+
         set +e
         snyk test "${{ inputs.location }}" \
           --all-projects \
           --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+          ${policy_arg:+$policy_arg} \
           --json-file-output=snyk-results.json \
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?

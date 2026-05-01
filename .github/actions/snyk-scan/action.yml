@@ -173,6 +173,31 @@ runs:
           exit $cmd_exit
         fi
 
+    - name: Normalize SARIF to single run
+      shell: bash
+      run: |
+        if [[ ! -s snyk-results.sarif ]]; then
+          cat > snyk-results.sarif << 'EOF'
+        {"runs":[{"results":[]}]}
+        EOF
+        fi
+
+        jq '
+          . as $doc
+          | if (($doc.runs // []) | length) <= 1 then
+              $doc
+            else
+              $doc
+              | .runs = [
+                  (
+                    $doc.runs[0]
+                    | .results = [ $doc.runs[] | .results[]? ]
+                  )
+                ]
+            end
+        ' snyk-results.sarif > snyk-results.single-run.sarif
+        mv snyk-results.single-run.sarif snyk-results.sarif
+
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       id: snyk-upload-artifact

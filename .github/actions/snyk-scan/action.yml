@@ -318,14 +318,13 @@ runs:
                     end
                   ),
                   cve: ((.identifiers.CVE // []) | map(tostring) | unique | join(", ")),
-                  published: ((.publicationTime // .disclosureTime // .creationTime // "") | tostring | .[0:10]),
-                  title: ((.title // "") | gsub("[\\r\\n]+"; " "))
+                  disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 }
             ]
             | sort_by(.severity | rank)
             | .[:5]
             | .[]
-            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Published: \((if .published == "" then "n/a" else .published end)) \(.title[0:80])"
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end))"
           ' snyk-results.json)
         fi
 
@@ -355,14 +354,13 @@ runs:
               | {
                 rule: (.ruleId // "issue"),
                 severity: sev,
-                component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown"),
-                message: ((.message.text // "") | gsub("[\\r\\n]+"; " "))
+                component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown")
               }
             ]
             | sort_by(.severity | rank)
             | .[:5]
             | .[]
-            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Published: n/a \(.message[0:110])"
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a"
           ' snyk-results.sarif)
         fi
 
@@ -378,7 +376,7 @@ runs:
                   else .
                   end);
             .runs[0].results[]?
-            | "- \(.ruleId // "issue") [\(sev)] \((.message.text // "") | gsub("[\\r\\n]+"; " ") | .[0:160])"
+            | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
           ' snyk-results.sarif | head -n 5)
         fi
 

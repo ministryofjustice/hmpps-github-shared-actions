@@ -58,6 +58,14 @@ runs:
                 - type: mrkdwn
                   text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
 
+    - name: Prepare summary payload
+      if: inputs.summary != ''
+      id: prepare-summary
+      shell: bash
+      run: |
+        summary_json=$(printf '%s' "${{ inputs.summary }}" | jq -Rs '"*Summary*\n```\n" + (gsub("\\r"; "")) + "\n```"')
+        echo "summary_json=${summary_json}" >> "$GITHUB_OUTPUT"
+
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2
       if: inputs.summary != ''
       with:
@@ -90,8 +98,4 @@ runs:
             - type: section
               text:
                 type: mrkdwn
-                text: |
-                  *Summary*
-                  ```
-                  ${{ inputs.summary }}
-                  ```
+                text: ${{ steps.prepare-summary.outputs.summary_json }}

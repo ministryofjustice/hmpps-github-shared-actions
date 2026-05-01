@@ -207,11 +207,47 @@ runs:
         fi
 
         jq --slurpfile snyk snyk-results.json '
-          def docs: ($snyk[0] // {});
+          def docs:
+            if (($snyk | length) == 0) then
+              {}
+            else
+              ($snyk[0] // {})
+            end;
+          def docs_roots:
+            (docs | if type == "array" then .[] else . end | select(type == "object"));
+          def id_list($v; $k):
+            if ($v | type) == "object"
+              and (($v.identifiers // null) | type) == "object"
+              and (($v.identifiers[$k] // null) | type) == "array"
+            then
+              $v.identifiers[$k]
+            else
+              []
+            end;
           def all_vulns:
             [
-              ((docs.vulnerabilities // [])[]?),
-              ((docs.applications // [])[]? | .vulnerabilities[]?)
+              (
+                docs_roots
+                | if (.vulnerabilities? | type) == "array" then
+                    .vulnerabilities[]
+                  else
+                    empty
+                  end
+              ),
+              (
+                docs_roots
+                | if (.applications? | type) == "array" then
+                    .applications[]
+                    | if type == "object" and (.vulnerabilities? | type) == "array" then
+                        .vulnerabilities[]
+                      else
+                        empty
+                      end
+                  else
+                    empty
+                  end
+              )
+              | select(type == "object")
             ];
           def package_of($v):
             if (($v.packageName // $v.name // "") != "") then
@@ -219,9 +255,9 @@ runs:
             else
               "unknown"
             end;
-          def cves_of($v): (($v.identifiers.CVE // []) | map(tostring) | unique | .[:3] | join(", "));
-          def cwes_of($v): (($v.identifiers.CWE // []) | map(tostring) | unique | .[:3] | join(", "));
-          def ghsas_of($v): (($v.identifiers.GHSA // []) | map(tostring) | unique | .[:3] | join(", "));
+          def cves_of($v): ((id_list($v; "CVE")) | map(tostring) | unique | .[:3] | join(", "));
+          def cwes_of($v): ((id_list($v; "CWE")) | map(tostring) | unique | .[:3] | join(", "));
+          def ghsas_of($v): ((id_list($v; "GHSA")) | map(tostring) | unique | .[:3] | join(", "));
           def disclosure_of($v): (($v.disclosureTime // $v.publicationTime // $v.creationTime // "") | tostring | .[0:10]);
           def component_of_result:
             (.locations[0].logicalLocations[0].fullyQualifiedName
@@ -239,9 +275,9 @@ runs:
             );
           def ui_tags($v):
             (
-              (($v.identifiers.CVE // []) | map("cve:" + tostring))
-              + (($v.identifiers.CWE // []) | map("cwe:" + tostring))
-              + (($v.identifiers.GHSA // []) | map("ghsa:" + tostring))
+              ((id_list($v; "CVE")) | map("cve:" + tostring))
+              + ((id_list($v; "CWE")) | map("cwe:" + tostring))
+              + ((id_list($v; "GHSA")) | map("ghsa:" + tostring))
             ) | unique;
 
           . as $sarif
@@ -327,9 +363,9 @@ runs:
           json_threshold=$(jq -r '
             def root:
               if type == "array" then
-                ([.[] | .severityThreshold? | select(. != null and . != "")][0] // empty)
+                ([.[] | select(type == "object") | .severityThreshold? | select(. != null and . != "")][0] // empty)
               else
-                (.severityThreshold? // empty)
+                (if type == "object" then (.severityThreshold? // empty) else empty end)
               end;
             root
             | tostring

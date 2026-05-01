@@ -398,7 +398,7 @@ prepare_summary() {
       | unique_by(.rule + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
       | sort_by(.severity | rank)
       | .[]
-      | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == \"\" then \"n/a\" else .cve end)) Disclosure: \((if .disclosure == \"\" then \"n/a\" else .disclosure end))"
+      | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end))"
     ' snyk-results.json 2>/dev/null || true)
   fi
 
@@ -450,7 +450,7 @@ prepare_summary() {
             end);
       .runs[0].results[]?
       | select(sev == "critical" or sev == "high")
-      | "- \(.ruleId // \"issue\") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
+      | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
     ' snyk-results.sarif)
   fi
 

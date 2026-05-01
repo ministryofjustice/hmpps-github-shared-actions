@@ -1,0 +1,229 @@
+name: 'Snyk Security Scan'
+description: 'Run Snyk vulnerability scanning with configurable options'
+
+inputs:
+  subproject:
+    description: 'For gradle multi module projects, leave blank for single module projects'
+    required: false
+    default: ''
+  severity:
+    description: 'Customisable severity levels'
+    required: false
+    default: 'HIGH,CRITICAL'
+  scan_type:
+    description: 'A scan type to use - either image (default) or fs'
+    required: false
+    default: 'image'
+  location:
+    description: 'A location for scans to take place'
+    required: false
+    default: '.'
+  snyk_policy_path:
+    description: 'Optional path to .snyk policy file used for ignore rules'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token for authentication'
+    required: false
+    default: ''
+  snyk_token:
+    description: 'Snyk token for authentication'
+    required: true
+  ECR_REGION:
+    description: 'The AWS region that the ECR repository was created in'
+    required: false
+    default: 'eu-west-2'
+  ECR_ROLE_TO_ASSUME:
+    description: The AWS role to assume to authenticate to ECR
+    required: false
+
+outputs:
+  results_count:
+    description: 'Number of vulnerabilities found'
+    value: ${{ steps.snyk-summary.outputs.results_count }}
+  critical_count:
+    description: 'Number of critical vulnerabilities found'
+    value: ${{ steps.snyk-summary.outputs.critical_count }}
+  high_count:
+    description: 'Number of high vulnerabilities found'
+    value: ${{ steps.snyk-summary.outputs.high_count }}
+  medium_count:
+    description: 'Number of medium vulnerabilities found'
+    value: ${{ steps.snyk-summary.outputs.medium_count }}
+  low_count:
+    description: 'Number of low vulnerabilities found'
+    value: ${{ steps.snyk-summary.outputs.low_count }}
+  summary:
+    description: 'Formatted summary of vulnerabilities'
+    value: ${{ steps.snyk-summary.outputs.summary }}
+  top_findings:
+    description: 'Top 5 findings for Slack summary'
+    value: ${{ steps.snyk-summary.outputs.top_findings }}
+  sarif_upload_outcome:
+    description: 'Outcome of the SARIF upload step'
+    value: ${{ steps.snyk-upload.outcome }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check repository in helm_deploy/values.yaml
+      id: check-package-repo
+      shell: bash
+      if: inputs.scan_type == 'image'
+      run: |
+        echo 'checking package repository for ${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:'
+        repo_info=$(grep -rh 'repository: ' --include="values.yaml" | grep ${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}} | head -n1 | awk -F'[:/ ]+' '{print $3"/"$4}')
+        echo "repo=${repo_info}" >> $GITHUB_OUTPUT
+
+    - name: Configure AWS credentials
+      if: ${{ inputs.ECR_ROLE_TO_ASSUME != '' && inputs.scan_type == 'image' }}
+      uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+      with:
+        role-to-assume: ${{ inputs.ECR_ROLE_TO_ASSUME }}
+        aws-region: ${{ inputs.ECR_REGION }}
+
+    - name: Login to Amazon ECR
+      if: ${{ inputs.ECR_ROLE_TO_ASSUME != '' && inputs.scan_type == 'image' }}
+      uses: aws-actions/amazon-ecr-login@19d944daaa35f0fa1d3f7f8af1d3f2e5de25c5b7 # v2.1.4
+
+    - name: Login to GHCR for private images
+      if: ${{ inputs.scan_type == 'image' && startsWith(steps.check-package-repo.outputs.repo, 'ghcr.io/') && github.event.repository.visibility != 'public' }}
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Install Snyk CLI
+      shell: bash
+      run: |
+        npm install -g snyk@1.1296.0
+
+    - name: Validate Snyk authentication
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk_token }}
+      run: |
+        # Normalize token in case a trailing newline was accidentally stored in the secret.
+        normalized_token="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+        if [[ -z "$normalized_token" ]]; then
+          echo "SNYK_TOKEN is empty. Configure a valid token in repository/org secrets."
+          exit 1
+        fi
+
+        if ! SNYK_TOKEN="$normalized_token" snyk auth "$normalized_token" >/dev/null 2>&1; then
+          echo "Snyk authentication failed. Check token validity/org access and confirm the secret value is current."
+          exit 1
+        fi
+
+    - name: Resolve severity threshold
+      id: severity
+      shell: bash
+      run: |
+        level=$(echo "${{ inputs.severity }}" | tr '[:upper:]' '[:lower:]')
+        threshold='high'
+        if [[ "$level" == *"low"* ]]; then
+          threshold='low'
+        elif [[ "$level" == *"medium"* ]]; then
+          threshold='medium'
+        elif [[ "$level" == *"high"* ]]; then
+          threshold='high'
+        elif [[ "$level" == *"critical"* ]]; then
+          threshold='critical'
+        fi
+        echo "threshold=${threshold}" >> "$GITHUB_OUTPUT"
+
+    - name: Snyk Security Scan - image
+      id: snyk-analyse-image
+      if: inputs.scan_type == 'image'
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk_token }}
+      run: |
+        export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+        image_ref="${{ steps.check-package-repo.outputs.repo }}/${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:latest"
+
+        policy_path="${{ inputs.snyk_policy_path }}"
+        if [[ -z "$policy_path" ]]; then
+          policy_path="${{ inputs.location }}/.snyk"
+        fi
+        policy_arg=""
+        if [[ -f "$policy_path" ]]; then
+          policy_arg="--policy-path=${policy_path}"
+          echo "Applying Snyk policy file: ${policy_path}"
+        fi
+
+        set +e
+        snyk container test "$image_ref" \
+          --app-vulns \
+          --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+          ${policy_arg:+$policy_arg} \
+          --json-file-output=snyk-results.json \
+          --sarif-file-output=snyk-results.sarif
+        cmd_exit=$?
+        set -e
+        if [[ $cmd_exit -gt 1 ]]; then
+          echo "Snyk container scan failed with exit code $cmd_exit"
+          exit $cmd_exit
+        fi
+
+    - name: Snyk Security Scan - filesystem
+      id: snyk-analyse-fs
+      if: inputs.scan_type == 'fs'
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk_token }}
+      run: |
+        export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+
+        policy_path="${{ inputs.snyk_policy_path }}"
+        if [[ -z "$policy_path" ]]; then
+          policy_path="${{ inputs.location }}/.snyk"
+        fi
+        policy_arg=""
+        if [[ -f "$policy_path" ]]; then
+          policy_arg="--policy-path=${policy_path}"
+          echo "Applying Snyk policy file: ${policy_path}"
+        fi
+
+        set +e
+        snyk test "${{ inputs.location }}" \
+          --all-projects \
+          --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+          ${policy_arg:+$policy_arg} \
+          --json-file-output=snyk-results.json \
+          --sarif-file-output=snyk-results.sarif
+        cmd_exit=$?
+        set -e
+        if [[ $cmd_exit -gt 1 ]]; then
+          echo "Snyk filesystem scan failed with exit code $cmd_exit"
+          exit $cmd_exit
+        fi
+
+    - name: Process SARIF for GitHub Security UI
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/process_snyk_results.sh" process-sarif
+
+    - name: Upload Snyk artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      id: snyk-upload-artifact
+      with:
+        name: snyk-check-${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}
+        path: |
+          snyk-results.sarif
+          snyk-results.json
+
+    - name: Snyk upload sarif
+      continue-on-error: true
+      id: snyk-upload
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+      with:
+        sarif_file: 'snyk-results.sarif'
+        category: ${{ inputs.scan_type == 'image' && 'snyk-image-scan' || 'snyk-fs-scan' }}
+
+    - name: Prepare Snyk summary
+      id: snyk-summary
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/process_snyk_results.sh" prepare-summary

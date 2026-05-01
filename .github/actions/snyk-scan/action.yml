@@ -145,6 +145,7 @@ runs:
         snyk container test "$image_ref" \
           --app-vulns \
           --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+          --json-file-output=snyk-results.json \
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?
         set -e
@@ -165,6 +166,7 @@ runs:
         snyk test "${{ inputs.location }}" \
           --all-projects \
           --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+          --json-file-output=snyk-results.json \
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?
         set -e
@@ -203,7 +205,9 @@ runs:
       id: snyk-upload-artifact
       with:
         name: snyk-check-${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}
-        path: snyk-results.sarif
+        path: |
+          snyk-results.sarif
+          snyk-results.json
 
     - name: Snyk upload sarif
       continue-on-error: true
@@ -286,40 +290,97 @@ runs:
           [.runs[0].results[]? | select((sev) == "low")] | length
         ' snyk-results.sarif)
 
-        top_findings=$(jq -r '
-          def sev:
-            (
-              ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
-              (.properties.severity? // .level? // "unknown")
-            )
-            | ascii_downcase
-            | if . == "error" then "high"
-              elif . == "warning" then "medium"
-              elif . == "note" then "low"
-              elif . == "none" then "low"
-              else .
+        top_findings=""
+
+        if [[ -s snyk-results.json ]]; then
+          top_findings=$(jq -r '
+            def rank:
+              if . == "critical" then 0
+              elif . == "high" then 1
+              elif . == "medium" then 2
+              elif . == "low" then 3
+              else 4
               end;
-          def rank:
-            if . == "critical" then 0
-            elif . == "high" then 1
-            elif . == "medium" then 2
-            elif . == "low" then 3
-            else 4
-            end;
-          [
+            def docs:
+              if type == "array" then .[] else . end;
+
+            [
+              docs
+              | .vulnerabilities[]?
+              | {
+                  rule: (.id // "issue"),
+                  severity: ((.severity // "unknown") | ascii_downcase),
+                  component: (
+                    if (.packageName? // .name?) then
+                      ((.packageName // .name) + "@" + (.version // .versionFrom // "unknown"))
+                    else
+                      "unknown"
+                    end
+                  ),
+                  cve: ((.identifiers.CVE // []) | map(tostring) | unique | join(", ")),
+                  published: ((.publicationTime // .disclosureTime // .creationTime // "") | tostring | .[0:10]),
+                  title: ((.title // "") | gsub("[\\r\\n]+"; " "))
+                }
+            ]
+            | sort_by(.severity | rank)
+            | .[:5]
+            | .[]
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Published: \((if .published == "" then "n/a" else .published end)) \(.title[0:80])"
+          ' snyk-results.json)
+        fi
+
+        if [[ -z "$top_findings" ]]; then
+          top_findings=$(jq -r '
+            def sev:
+              (
+                ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
+                (.properties.severity? // .level? // "unknown")
+              )
+              | ascii_downcase
+              | if . == "error" then "high"
+                elif . == "warning" then "medium"
+                elif . == "note" then "low"
+                elif . == "none" then "low"
+                else .
+                end;
+            def rank:
+              if . == "critical" then 0
+              elif . == "high" then 1
+              elif . == "medium" then 2
+              elif . == "low" then 3
+              else 4
+              end;
+            [
+              .runs[0].results[]?
+              | {
+                rule: (.ruleId // "issue"),
+                severity: sev,
+                component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown"),
+                message: ((.message.text // "") | gsub("[\\r\\n]+"; " "))
+              }
+            ]
+            | sort_by(.severity | rank)
+            | .[:5]
+            | .[]
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Published: n/a \(.message[0:110])"
+          ' snyk-results.sarif)
+        fi
+
+        # Fallback for SARIF variants where nested location fields are missing/unexpected.
+        if [[ "$results_count" -gt 0 && -z "$top_findings" ]]; then
+          top_findings=$(jq -r '
+            def sev:
+              ((.level? // "unknown") | ascii_downcase
+                | if . == "error" then "high"
+                  elif . == "warning" then "medium"
+                  elif . == "note" then "low"
+                  elif . == "none" then "low"
+                  else .
+                  end);
             .runs[0].results[]?
-            | {
-              rule: (.ruleId // "issue"),
-              severity: sev,
-              component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown"),
-              message: ((.message.text // "") | gsub("[\\r\\n]+"; " "))
-            }
-          ]
-          | sort_by(.severity | rank)
-          | .[:5]
-          | .[]
-          | "- \(.rule) [\(.severity)] (\(.component)) \(.message[0:140])"
-        ' snyk-results.sarif)
+            | "- \(.ruleId // "issue") [\(sev)] \((.message.text // "") | gsub("[\\r\\n]+"; " ") | .[0:160])"
+          ' snyk-results.sarif | head -n 5)
+        fi
 
         if [[ "$results_count" -gt 0 ]]; then
           if [[ -n "$top_findings" ]]; then

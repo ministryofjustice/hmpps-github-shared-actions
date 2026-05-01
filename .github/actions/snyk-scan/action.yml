@@ -322,6 +322,40 @@ runs:
           selected_severities_json='["high","critical"]'
         fi
 
+        effective_threshold='${{ steps.severity.outputs.threshold }}'
+        if [[ -s snyk-results.json ]]; then
+          json_threshold=$(jq -r '
+            def root:
+              if type == "array" then
+                ([.[] | .severityThreshold? | select(. != null and . != "")][0] // empty)
+              else
+                (.severityThreshold? // empty)
+              end;
+            root
+            | tostring
+            | ascii_downcase
+            | if . == "moderate" then "medium" else . end
+          ' snyk-results.json 2>/dev/null || true)
+          if [[ -n "$json_threshold" ]]; then
+            effective_threshold="$json_threshold"
+          fi
+        fi
+
+        case "$effective_threshold" in
+          low)
+            selected_severities_json='["critical","high","medium","low"]'
+            ;;
+          medium)
+            selected_severities_json='["critical","high","medium"]'
+            ;;
+          high)
+            selected_severities_json='["critical","high"]'
+            ;;
+          critical)
+            selected_severities_json='["critical"]'
+            ;;
+        esac
+
         selected_severities_label=$(echo "$selected_severities_json" | jq -r 'map(ascii_upcase) | join(", ")')
 
         results_count=$(jq '[.runs[0].results[]?] | length' snyk-results.sarif)
@@ -390,13 +424,44 @@ runs:
         # Prefer JSON-derived counts (same source as top findings), fallback remains SARIF above.
         if [[ -s snyk-results.json ]]; then
           json_counts=$(jq -r --argjson selected "$selected_severities_json" '
+            def roots:
+              if type == "array" then .[] else . end;
+            def each_vuln:
+              roots
+              | select(type == "object")
+              | (
+                  if (.vulnerabilities? | type) == "array" then
+                    .vulnerabilities[]
+                  else
+                    empty
+                  end
+                ),
+                (
+                  if (.applications? | type) == "array" then
+                    .applications[]
+                    | if type == "object" and (.vulnerabilities? | type) == "array" then
+                        .vulnerabilities[]
+                      else
+                        empty
+                      end
+                  else
+                    empty
+                  end
+                )
+              | if type == "array" then .[] else . end
+              | select(type == "object");
             def norm_sev($v):
+              def obj_get($o; $k):
+                if ($o | type) == "object" then $o[$k] else empty end;
+              if ($v | type) != "object" then
+                "unknown"
+              else
               (
-                $v.severity
-                // $v.effectiveSeverity
-                // $v.issueData.severity
-                // $v.severityLevel
-                // $v.metadata.severity
+                obj_get($v; "severity")
+                // obj_get($v; "effectiveSeverity")
+                // obj_get(obj_get($v; "issueData"); "severity")
+                // obj_get($v; "severityLevel")
+                // obj_get(obj_get($v; "metadata"); "severity")
                 // "unknown"
               )
               | tostring
@@ -407,22 +472,10 @@ runs:
                 elif . == "note" then "low"
                 elif . == "none" then "low"
                 else .
-                end;
+                end
+              end;
             [
-              (
-                if (.vulnerabilities? | type) == "array" then
-                  .vulnerabilities[]
-                else
-                  empty
-                end
-              ),
-              (
-                if (.applications? | type) == "array" then
-                  .applications[] | .vulnerabilities[]?
-                else
-                  empty
-                end
-              )
+              each_vuln
               | {
                   rule: (.id // "issue"),
                   severity: norm_sev(.),
@@ -465,13 +518,44 @@ runs:
 
         if [[ -s snyk-results.json ]]; then
           top_findings=$(jq -r --argjson selected "$selected_severities_json" '
+            def roots:
+              if type == "array" then .[] else . end;
+            def each_vuln:
+              roots
+              | select(type == "object")
+              | (
+                  if (.vulnerabilities? | type) == "array" then
+                    .vulnerabilities[]
+                  else
+                    empty
+                  end
+                ),
+                (
+                  if (.applications? | type) == "array" then
+                    .applications[]
+                    | if type == "object" and (.vulnerabilities? | type) == "array" then
+                        .vulnerabilities[]
+                      else
+                        empty
+                      end
+                  else
+                    empty
+                  end
+                )
+              | if type == "array" then .[] else . end
+              | select(type == "object");
             def norm_sev($v):
+              def obj_get($o; $k):
+                if ($o | type) == "object" then $o[$k] else empty end;
+              if ($v | type) != "object" then
+                "unknown"
+              else
               (
-                $v.severity
-                // $v.effectiveSeverity
-                // $v.issueData.severity
-                // $v.severityLevel
-                // $v.metadata.severity
+                obj_get($v; "severity")
+                // obj_get($v; "effectiveSeverity")
+                // obj_get(obj_get($v; "issueData"); "severity")
+                // obj_get($v; "severityLevel")
+                // obj_get(obj_get($v; "metadata"); "severity")
                 // "unknown"
               )
               | tostring
@@ -482,7 +566,8 @@ runs:
                 elif . == "note" then "low"
                 elif . == "none" then "low"
                 else .
-                end;
+                end
+              end;
             def rank:
               if . == "critical" then 0
               elif . == "high" then 1
@@ -491,20 +576,7 @@ runs:
               else 4
               end;
             [
-              (
-                if (.vulnerabilities? | type) == "array" then
-                  .vulnerabilities[]
-                else
-                  empty
-                end
-              ),
-              (
-                if (.applications? | type) == "array" then
-                  .applications[] | .vulnerabilities[]?
-                else
-                  empty
-                end
-              )
+              each_vuln
               | {
                   rule: (.id // "issue"),
                   severity: norm_sev(.),
@@ -523,7 +595,7 @@ runs:
             | unique_by(.rule + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
             | sort_by(.severity | rank)
             | .[]
-            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end)) Link: https://security.snyk.io/vuln/\(.rule)"
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end))"
           ' snyk-results.json)
         fi
 
@@ -559,7 +631,7 @@ runs:
             | map(select(($selected | index(.severity)) != null))
             | sort_by(.severity | rank)
             | .[]
-            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a Link: https://security.snyk.io/vuln/\(.rule)"
+            | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a"
           ' snyk-results.sarif)
         fi
 
@@ -576,7 +648,7 @@ runs:
                   end);
             .runs[0].results[]?
             | select(($selected | index(sev)) != null)
-            | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a Link: https://security.snyk.io/vuln/\(.ruleId // "issue")"
+            | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
           ' snyk-results.sarif)
         fi
 

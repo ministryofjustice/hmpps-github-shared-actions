@@ -33,11 +33,6 @@ on:
         required: false
         default: '.'
         type: string
-      snyk_cli_version:
-        description: 'Pinned Snyk CLI version'
-        required: false
-        default: '1.1296.0'
-        type: string
     secrets:
       HMPPS_SRE_SLACK_BOT_TOKEN:
         description: 'Slack bot token'
@@ -70,7 +65,6 @@ jobs:
           severity: ${{ inputs.severity }}
           scan_type: ${{ inputs.scan_type }}
           location: ${{ inputs.location }}
-          snyk_cli_version: ${{ inputs.snyk_cli_version }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           snyk_token: ${{ secrets.SNYK_TOKEN }}
 

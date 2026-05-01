@@ -33,6 +33,11 @@ on:
         required: false
         default: '.'
         type: string
+      snyk_cli_version:
+        description: 'Pinned Snyk CLI version'
+        required: false
+        default: '1.1296.0'
+        type: string
     secrets:
       HMPPS_SRE_SLACK_BOT_TOKEN:
         description: 'Slack bot token'
@@ -55,21 +60,22 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Snyk Security Scan
         id: snyk-scan
-        uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/snyk-scan@v2 # WORKFLOW_VERSION
+        uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/snyk-scan@feat/HEAT-1244 # WORKFLOW_VERSION
         with:
           subproject: ${{ inputs.subproject }}
           severity: ${{ inputs.severity }}
           scan_type: ${{ inputs.scan_type }}
           location: ${{ inputs.location }}
+          snyk_cli_version: ${{ inputs.snyk_cli_version }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           snyk_token: ${{ secrets.SNYK_TOKEN }}
 
       - name: Snyk slack notification
-        uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/slack_codescan_notification@v2 # WORKFLOW_VERSION
+        uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/slack_codescan_notification@feat/HEAT-1244 # WORKFLOW_VERSION
         if: (failure() || steps.snyk-scan.outcome == 'failure' || steps.snyk-scan.outputs.results_count > 0) && inputs.channel_id != 'NO_SLACK'
         with:
           title: 'Snyk'
@@ -77,4 +83,5 @@ jobs:
           channel_id: ${{ inputs.channel_id }}
           SLACK_BOT_TOKEN: ${{ secrets.HMPPS_SRE_SLACK_BOT_TOKEN }}
           subproject: ${{ inputs.subproject }}
+          scan_context: ${{ inputs.scan_type }}
           summary: ${{ inputs.slack_include_summary && steps.snyk-scan.outputs.summary || '' }}

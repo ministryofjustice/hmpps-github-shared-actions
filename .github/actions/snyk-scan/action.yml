@@ -580,6 +580,15 @@ runs:
                 )
               | if type == "array" then .[] else . end
               | select(type == "object");
+            def id_list($v; $k):
+              if ($v | type) == "object"
+                and (($v.identifiers // null) | type) == "object"
+                and (($v.identifiers[$k] // null) | type) == "array"
+              then
+                $v.identifiers[$k]
+              else
+                []
+              end;
             def norm_sev($v):
               def obj_get($o; $k):
                 if ($o | type) == "object" then $o[$k] else empty end;
@@ -623,7 +632,7 @@ runs:
                       "unknown"
                     end
                   ),
-                  cve: ((.identifiers.CVE // []) | map(tostring) | unique | join(", ")),
+                  cve: ((id_list(.; "CVE")) | map(tostring) | unique | join(", ")),
                   disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 }
             ]
@@ -632,7 +641,7 @@ runs:
             | sort_by(.severity | rank)
             | .[]
             | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end))"
-          ' snyk-results.json)
+          ' snyk-results.json 2>/dev/null || true)
         fi
 
         if [[ -z "$top_findings" ]]; then

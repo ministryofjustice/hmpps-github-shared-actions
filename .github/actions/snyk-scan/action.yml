@@ -313,6 +313,15 @@ runs:
         EOF
         fi
 
+        summary_source="SARIF fallback"
+        selected_severities_json=$(printf '%s' "${{ inputs.severity }}" \
+          | tr '[:upper:]' '[:lower:]' \
+          | tr -d ' ' \
+          | jq -R 'split(",") | map(select(length > 0) | if . == "moderate" then "medium" else . end) | unique')
+        if [[ -z "$selected_severities_json" || "$selected_severities_json" == "[]" ]]; then
+          selected_severities_json='["high","critical"]'
+        fi
+
         results_count=$(jq '[.runs[0].results[]?] | length' snyk-results.sarif)
 
         critical_count=$(jq '
@@ -378,7 +387,7 @@ runs:
 
         # Prefer JSON-derived counts (same source as top findings), fallback remains SARIF above.
         if [[ -s snyk-results.json ]]; then
-          json_counts=$(jq -r '
+          json_counts=$(jq -r --argjson selected "$selected_severities_json" '
             [
               (
                 if (.vulnerabilities? | type) == "array" then
@@ -406,6 +415,7 @@ runs:
                   )
                 }
             ]
+            | map(select(($selected | index(.severity)) != null))
             | unique_by(.rule + "|" + .severity + "|" + .component)
             | {
                 total: length,
@@ -434,7 +444,7 @@ runs:
         top_findings=""
 
         if [[ -s snyk-results.json ]]; then
-          top_findings=$(jq -r '
+          top_findings=$(jq -r --argjson selected "$selected_severities_json" '
             def rank:
               if . == "critical" then 0
               elif . == "high" then 1
@@ -471,16 +481,16 @@ runs:
                   disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 }
             ]
+            | map(select(.severity == "critical" or .severity == "high"))
             | unique_by(.rule + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
             | sort_by(.severity | rank)
-            | .[:5]
             | .[]
             | "- \(.rule) [\(.severity)] (\(.component)) CVE: \((if .cve == "" then "n/a" else .cve end)) Disclosure: \((if .disclosure == "" then "n/a" else .disclosure end)) Link: https://security.snyk.io/vuln/\(.rule)"
           ' snyk-results.json)
         fi
 
         if [[ -z "$top_findings" ]]; then
-          top_findings=$(jq -r '
+          top_findings=$(jq -r --argjson selected "$selected_severities_json" '
             def sev:
               (
                 ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
@@ -508,8 +518,8 @@ runs:
                 component: (.locations[0].logicalLocations[0].fullyQualifiedName // .locations[0].physicalLocation.artifactLocation.uri // "unknown")
               }
             ]
+            | map(select(.severity == "critical" or .severity == "high"))
             | sort_by(.severity | rank)
-            | .[:5]
             | .[]
             | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a Link: https://security.snyk.io/vuln/\(.rule)"
           ' snyk-results.sarif)
@@ -517,7 +527,7 @@ runs:
 
         # Fallback for SARIF variants where nested location fields are missing/unexpected.
         if [[ "$results_count" -gt 0 && -z "$top_findings" ]]; then
-          top_findings=$(jq -r '
+          top_findings=$(jq -r --argjson selected "$selected_severities_json" '
             def sev:
               ((.level? // "unknown") | ascii_downcase
                 | if . == "error" then "high"
@@ -527,8 +537,9 @@ runs:
                   else .
                   end);
             .runs[0].results[]?
+            | select(sev == "critical" or sev == "high")
             | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a Link: https://security.snyk.io/vuln/\(.ruleId // "issue")"
-          ' snyk-results.sarif | head -n 5)
+          ' snyk-results.sarif)
         fi
 
         if [[ "$results_count" -gt 0 ]]; then
@@ -536,7 +547,7 @@ runs:
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
             slack_summary+=$'\nSource: '
             slack_summary+="${summary_source}"
-            slack_summary+=$'\nTop findings:\n'
+            slack_summary+=$'\nCritical/High findings:\n'
             slack_summary+="${top_findings}"
           else
             slack_summary="Total: ${results_count} (Critical: ${critical_count}, High: ${high_count}, Medium: ${medium_count}, Low: ${low_count})"
@@ -544,7 +555,7 @@ runs:
             slack_summary+="${summary_source}"
           fi
           if [[ ${#slack_summary} -gt 3000 ]]; then
-            slack_summary="${slack_summary:0:2997}..."
+            slack_summary="${slack_summary:0:2970}\n...[truncated due Slack message length limit]"
           fi
         else
           slack_summary="No vulnerabilities found"

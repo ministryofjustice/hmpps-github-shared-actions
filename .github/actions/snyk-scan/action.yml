@@ -205,6 +205,25 @@ runs:
       run: |
         bash "${{ github.action_path }}/process_snyk_results.sh" process-sarif
 
+    - name: Validate SARIF consistency
+      shell: bash
+      run: |
+        sarif_results=$(jq -r '[.runs[0].results[]?] | length' snyk-results.sarif 2>/dev/null || echo 0)
+        json_vulns=$(jq -r '
+          def roots: if type == "array" then .[] else . end;
+          [
+            roots | select(type == "object")
+            | ((.vulnerabilities // [])[]?), ((.applications // [])[]? | (.vulnerabilities // [])[]?)
+            | select(type == "object")
+          ] | length
+        ' snyk-results.json 2>/dev/null || echo 0)
+
+        echo "SARIF results: ${sarif_results}; JSON vulnerabilities: ${json_vulns}"
+        if [[ "${json_vulns}" -gt 0 && "${sarif_results}" -eq 0 ]]; then
+          echo "SARIF has zero results while JSON has vulnerabilities. Failing to avoid silent Security tab non-updates."
+          exit 1
+        fi
+
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       id: snyk-upload-artifact
@@ -215,12 +234,20 @@ runs:
           snyk-results.json
 
     - name: Snyk upload sarif
-      continue-on-error: true
       id: snyk-upload
       uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
       with:
         sarif_file: 'snyk-results.sarif'
         category: ${{ inputs.scan_type == 'image' && 'snyk-image-scan' || 'snyk-fs-scan' }}
+
+    - name: Verify SARIF upload outcome
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        if [[ "${{ steps.snyk-upload.outcome }}" != "success" ]]; then
+          echo "SARIF upload did not succeed (outcome: ${{ steps.snyk-upload.outcome }})."
+          exit 1
+        fi
 
     - name: Prepare Snyk summary
       id: snyk-summary

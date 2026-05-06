@@ -81,6 +81,15 @@ process_sarif() {
       else
         "unknown"
       end;
+    def vuln_sev($v):
+      (($v.severity // "unknown") | tostring | ascii_downcase
+        | if . == "moderate" then "medium" else . end);
+    def level_of($sev):
+      if $sev == "critical" or $sev == "high" then "error"
+      elif $sev == "medium" then "warning"
+      elif $sev == "low" then "note"
+      else "warning"
+      end;
     def cves_of($v): ((id_list($v; "CVE")) | map(tostring) | unique | .[:3] | join(", "));
     def cwes_of($v): ((id_list($v; "CWE")) | map(tostring) | unique | .[:3] | join(", "));
     def ghsas_of($v): ((id_list($v; "GHSA")) | map(tostring) | unique | .[:3] | join(", "));
@@ -107,28 +116,55 @@ process_sarif() {
       ) | unique;
 
     . as $sarif
-    | .runs[0].results = [
-        .runs[0].results[]? as $r
-        | ($r.ruleId // "issue") as $id
-        | ($r | component_of_result) as $component
-        | (find_vuln($id; $component)) as $v
-        | if $v == null then
-            $r
-          elif (($r.message.text // "") | contains(" | Package:")) then
-            $r
-          else
-            (
-              " | Package: " + (package_of($v))
-              + " | CVE: " + (if (cves_of($v)) == "" then "n/a" else cves_of($v) end)
-              + " | CWE: " + (if (cwes_of($v)) == "" then "n/a" else cwes_of($v) end)
-              + " | GHSA: " + (if (ghsas_of($v)) == "" then "n/a" else ghsas_of($v) end)
-              + " | Disclosure: " + (if (disclosure_of($v)) == "" then "n/a" else disclosure_of($v) end)
-              + " | Ref: https://security.snyk.io/vuln/" + $id
-            ) as $extra
-            | $r
-            | .message.text = ((.message.text // "") + $extra)
-          end
-      ]
+    | .runs[0].results = (
+        if ((.runs[0].results // []) | length) > 0 then
+          [
+            .runs[0].results[]? as $r
+            | ($r.ruleId // "issue") as $id
+            | ($r | component_of_result) as $component
+            | (find_vuln($id; $component)) as $v
+            | if $v == null then
+                $r
+              elif (($r.message.text // "") | contains(" | Package:")) then
+                $r
+              else
+                (
+                  " | Package: " + (package_of($v))
+                  + " | CVE: " + (if (cves_of($v)) == "" then "n/a" else cves_of($v) end)
+                  + " | CWE: " + (if (cwes_of($v)) == "" then "n/a" else cwes_of($v) end)
+                  + " | GHSA: " + (if (ghsas_of($v)) == "" then "n/a" else ghsas_of($v) end)
+                  + " | Disclosure: " + (if (disclosure_of($v)) == "" then "n/a" else disclosure_of($v) end)
+                  + " | Ref: https://security.snyk.io/vuln/" + $id
+                ) as $extra
+                | $r
+                | .message.text = ((.message.text // "") + $extra)
+              end
+          ]
+        else
+          [
+            all_vulns[]?
+            | (vuln_sev(.)) as $sev
+            | {
+                ruleId: (.id // "issue"),
+                level: (level_of($sev)),
+                message: { text: (.title // .id // "Snyk vulnerability") },
+                locations: [
+                  {
+                    logicalLocations: [
+                      {
+                        fullyQualifiedName: package_of(.)
+                      }
+                    ]
+                  }
+                ],
+                properties: {
+                  severity: $sev,
+                  tags: (["severity:" + $sev] + ui_tags(.))
+                }
+              }
+          ]
+        end
+      )
     | (
         [
           all_vulns[]?

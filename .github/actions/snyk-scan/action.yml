@@ -101,7 +101,10 @@ runs:
     - name: Install Snyk CLI
       shell: bash
       run: |
-        npm install -g snyk@1.1296.0
+        # Shared action controls Snyk CLI version centrally; callers cannot override it.
+        SNYK_CLI_VERSION='1.1304.2'
+        npm install -g "snyk@${SNYK_CLI_VERSION}"
+        snyk --version
 
     - name: Validate Snyk authentication
       shell: bash
@@ -249,6 +252,22 @@ runs:
           if [[ -n "$gradlew_cmd" ]]; then
             echo "Running Gradle preflight in '$gradle_dir' via '$gradlew_cmd'"
             set +e
+            gradle_version_output=$("$gradlew_cmd" -v 2>/dev/null || true)
+            gradle_major=$(printf '%s' "$gradle_version_output" | sed -n 's/^Gradle \([0-9][0-9]*\)\..*$/\1/p' | head -n1)
+            snyk_version_output=$(snyk --version 2>/dev/null || true)
+            snyk_major=$(printf '%s' "$snyk_version_output" | awk -F. '{print $1}')
+            snyk_minor=$(printf '%s' "$snyk_version_output" | awk -F. '{print $2}')
+
+            if [[ -n "$gradle_major" && "$gradle_major" -ge 9 ]]; then
+              if [[ "$snyk_major" =~ ^[0-9]+$ ]] && [[ "$snyk_minor" =~ ^[0-9]+$ ]]; then
+                if [[ "$snyk_major" -eq 1 && "$snyk_minor" -lt 1300 ]]; then
+                  echo "Detected Gradle ${gradle_major}.x with Snyk CLI ${snyk_version_output}."
+                  echo "This combination can fail with '--build-file' errors."
+                  echo "Update the centrally managed Snyk CLI version in this action or pin Gradle wrapper to 8.x for scanning."
+                fi
+              fi
+            fi
+
             (
               cd "$gradle_dir"
               "$gradlew_cmd" -q help --no-daemon --stacktrace

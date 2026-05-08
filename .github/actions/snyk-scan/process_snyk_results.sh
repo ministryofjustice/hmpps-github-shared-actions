@@ -31,7 +31,7 @@ process_sarif() {
   ' snyk-results.sarif > snyk-results.single-run.sarif
   mv snyk-results.single-run.sarif snyk-results.sarif
 
-  if [[ ! -s snyk-results.sarif || ! -s snyk-results.json ]]; then
+  if [[ ! -s snyk-results.sarif ]]; then
     return 0
   fi
 
@@ -119,6 +119,15 @@ process_sarif() {
     def cwes_of($v): ((id_list($v; "CWE")) | map(tostring) | unique | .[:3] | join(", "));
     def ghsas_of($v): ((id_list($v; "GHSA")) | map(tostring) | unique | .[:3] | join(", "));
     def disclosure_of($v): (($v.disclosureTime // $v.publicationTime // $v.creationTime // "") | tostring | .[0:10]);
+    def strip_severity_prefix($t): (($t // "") | tostring | sub("^(?i)(critical|high|medium|low)\\s+severity\\s*-\\s*"; ""));
+    def with_id_prefix($id; $text):
+      ($id // "issue") as $rid
+      | (strip_severity_prefix($text)) as $clean
+      | if ($clean | startswith($rid + " - ")) then
+          $clean
+        else
+          ($rid + " - " + $clean)
+        end;
     def target_file_of($v): (($v.__targetFile // $v.displayTargetFile // $v.targetFile // "") | tostring);
     def fingerprint_of($v):
       (
@@ -271,6 +280,12 @@ process_sarif() {
         | unique_by(.id)
       ) as $enriched_rules
     | .runs[0].tool.driver.rules = (($enriched_rules + (.runs[0].tool.driver.rules // [])) | unique_by(.id))
+    | .runs[0].tool.driver.rules |= map(
+        (.id // "issue") as $rid
+        | .shortDescription = ((.shortDescription // {}) + {
+            text: with_id_prefix($rid; (.shortDescription.text // .name // .id // "Snyk vulnerability"))
+          })
+      )
   ' snyk-results.sarif > snyk-results.enriched.sarif
 
   mv snyk-results.enriched.sarif snyk-results.sarif

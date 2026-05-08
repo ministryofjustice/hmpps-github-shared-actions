@@ -115,11 +115,12 @@ process_sarif() {
         elif $sev == "low" then "1.0"
         else "0.0"
         end;
-    def cves_of($v): ((id_list($v; "CVE")) | map(tostring) | unique | .[:3] | join(", "));
+    def cves_of($v): ((id_list($v; "CVE")) | map(tostring) | unique | join(", "));
     def cwes_of($v): ((id_list($v; "CWE")) | map(tostring) | unique | .[:3] | join(", "));
     def ghsas_of($v): ((id_list($v; "GHSA")) | map(tostring) | unique | .[:3] | join(", "));
     def disclosure_of($v): (($v.disclosureTime // $v.publicationTime // $v.creationTime // "") | tostring | .[0:10]);
     def strip_severity_prefix($t): (($t // "") | tostring | sub("^(?i)(critical|high|medium|low)\\s+severity\\s*-\\s*"; ""));
+    def csv_trimmed($s): (($s // "") | tostring | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "" and . != "n/a")) | unique | join(", "));
     def with_id_prefix($id; $text):
       ($id // "issue") as $rid
       | (strip_severity_prefix($text)) as $clean
@@ -127,6 +128,15 @@ process_sarif() {
           $clean
         else
           ($rid + " - " + $clean)
+        end;
+    def with_cve_suffix($text; $cves):
+      (csv_trimmed($cves)) as $cve_text
+      | if $cve_text == "" then
+          $text
+        elif (($text // "") | tostring | contains(" | CVE:")) then
+          $text
+        else
+          (($text // "") | tostring) + " | CVE: " + $cve_text
         end;
     def target_file_of($v): (($v.__targetFile // $v.displayTargetFile // $v.targetFile // "") | tostring);
     def fingerprint_of($v):
@@ -267,7 +277,7 @@ process_sarif() {
           | {
               id: (.id // "issue"),
               name: (.id // "issue"),
-                shortDescription: { text: ((.id // "issue") + " - " + (.title // .id // "Snyk vulnerability")) },
+                shortDescription: { text: with_cve_suffix(((.id // "issue") + " - " + (.title // .id // "Snyk vulnerability")); cves_of(.)) },
                 fullDescription: { text: ((.id // "issue") + " - " + (.title // .description // "Snyk vulnerability") + " | CVE: " + (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)) },
               helpUri: ("https://security.snyk.io/vuln/" + (.id // "issue")),
               properties: {
@@ -282,9 +292,26 @@ process_sarif() {
     | .runs[0].tool.driver.rules = (($enriched_rules + (.runs[0].tool.driver.rules // [])) | unique_by(.id))
     | .runs[0].tool.driver.rules |= map(
         (.id // "issue") as $rid
+        | ((.properties.cve // ([((.fullDescription.text // "") | scan("CVE-[0-9]{4}-[0-9]+"))] | unique | join(", ")) // "") | tostring) as $cves
         | .shortDescription = ((.shortDescription // {}) + {
-            text: with_id_prefix($rid; (.shortDescription.text // .name // .id // "Snyk vulnerability"))
+          text: with_cve_suffix(with_id_prefix($rid; (.shortDescription.text // .name // .id // "Snyk vulnerability")); $cves)
           })
+      )
+    | . as $doc2
+    | .runs[0].results |= map(
+        (.ruleId // "issue") as $rid
+        | (($doc2.runs[0].tool.driver.rules // []) | map(select((.id // "") == $rid)) | .[0]) as $rule
+        | ((.properties.cve // $rule.properties.cve // ([((($rule.fullDescription // {}).text // "") | scan("CVE-[0-9]{4}-[0-9]+"))] | unique | join(", ")) // "") | tostring) as $cves
+        | .message.text = with_cve_suffix(with_id_prefix($rid; (.message.text // $rule.shortDescription.text // "Snyk vulnerability")); $cves)
+        | .properties = (
+            (.properties // {})
+            + {
+                cve: (
+                  (csv_trimmed($cves)) as $c
+                  | if $c == "" then "n/a" else $c end
+                )
+              }
+          )
       )
   ' snyk-results.sarif > snyk-results.enriched.sarif
 

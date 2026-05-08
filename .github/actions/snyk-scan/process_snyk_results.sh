@@ -181,6 +181,14 @@ process_sarif() {
                 $r
               else
                 $r
+                | .message.text = (
+                    (.message.text // ($v.title // "Snyk vulnerability")) as $m
+                    | if ($m | startswith($id + " - ")) then
+                        $m
+                      else
+                        ($id + " - " + $m)
+                      end
+                  )
                 | if ((.locations // []) | length) == 0 then
                     .locations = [location_of($v)]
                   elif ((.locations[0].physicalLocation.artifactLocation.uri // "") == "" and (target_file_of($v) != "")) then
@@ -207,7 +215,8 @@ process_sarif() {
                     + {
                         severity: vuln_sev($v),
                         tags: ((((.properties.tags // []) + ["severity:" + vuln_sev($v)] + ui_tags($v)) | map(tostring)) | unique),
-                        "security-severity": security_severity_of($v)
+                        "security-severity": security_severity_of($v),
+                        cve: (if (cves_of($v)) == "" then "n/a" else cves_of($v) end)
                       }
                   )
                 | .partialFingerprints = (
@@ -225,14 +234,15 @@ process_sarif() {
             | {
                 ruleId: (.id // "issue"),
                 level: (level_of($sev)),
-                message: { text: (.title // .id // "Snyk vulnerability") },
+                  message: { text: ((.id // "issue") + " - " + (.title // .id // "Snyk vulnerability")) },
                 locations: [
                   location_of(.)
                 ],
                 properties: {
                   severity: $sev,
                   tags: (["severity:" + $sev] + ui_tags(.)),
-                  "security-severity": security_severity_of(.)
+                    "security-severity": security_severity_of(.),
+                    cve: (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)
                   },
                   partialFingerprints: {
                     primaryLocationLineHash: fingerprint_of(.)
@@ -248,12 +258,13 @@ process_sarif() {
           | {
               id: (.id // "issue"),
               name: (.id // "issue"),
-              shortDescription: { text: (.title // .id // "Snyk vulnerability") },
-              fullDescription: { text: (.title // .description // "Snyk vulnerability") },
+                shortDescription: { text: ((.id // "issue") + " - " + (.title // .id // "Snyk vulnerability")) },
+                fullDescription: { text: ((.id // "issue") + " - " + (.title // .description // "Snyk vulnerability") + " | CVE: " + (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)) },
               helpUri: ("https://security.snyk.io/vuln/" + (.id // "issue")),
               properties: {
                 tags: ui_tags(.),
-                "security-severity": security_severity_of(.)
+                  "security-severity": security_severity_of(.),
+                  cve: (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)
               }
             }
         ]

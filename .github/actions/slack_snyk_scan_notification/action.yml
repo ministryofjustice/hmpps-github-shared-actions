@@ -1,5 +1,5 @@
-name: 'failure Slack message'
-description: 'Sends a slack message to notify of failure'
+name: 'Snyk Scan Slack message for failure or findings'
+description: 'Sends a slack message to notify of failure or findings'
 inputs:
   title:
     description: "Title of the failed workflow"
@@ -76,13 +76,18 @@ runs:
                   | map(select(.severity == "critical" or .severity == "high"))
                   | unique_by(.id + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
                   | sort_by(rank(.severity), .id)
-                  | .[:5]
+                ) as $all_findings
+              | ($all_findings | .[:10]) as $top_findings
+              | ($top_findings | length) as $shown
+              | ($all_findings | length) as $available
+              | (
+                  $top_findings
                   | map("- " + .id + " [" + .severity + "] (" + .component + ") CVE: " + (if .cve == "" then "n/a" else .cve end) + " Disclosure: " + (if .disclosure == "" then "n/a" else .disclosure end))
                   | join("\n")
                 ) as $f
               | "Total: \($total) (Critical: \($critical), High: \($high), Medium: \($medium), Low: \($low))"
                 + (if $s != "" then "\n" + $s else "" end)
-                + (if $f != "" then "\nFindings:\n" + $f else "" end)
+                + (if $f != "" then "\nTop findings shown: \($shown) of \($available)\nFindings:\n" + $f else "" end)
             ' snyk-results.json 2>/dev/null || true)
 
           generated_findings=$(jq -r '
@@ -115,11 +120,13 @@ runs:
               | map(select(.severity == "critical" or .severity == "high"))
               | unique_by(.id + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
               | sort_by(rank(.severity), .id)
-              | .[:5]
-              | if length == 0 then ""
+              as $all_findings
+              | ($all_findings | .[:10]) as $top_findings
+              | if ($top_findings | length) == 0 then ""
                 else
-                  "Findings:\n" +
-                  (map("- " + .id + " [" + .severity + "] (" + .component + ") CVE: " + (if .cve == "" then "n/a" else .cve end) + " Disclosure: " + (if .disclosure == "" then "n/a" else .disclosure end)) | join("\n"))
+                  "Top findings shown: " + (($top_findings | length) | tostring) + " of " + (($all_findings | length) | tostring)
+                  + "\nFindings:\n"
+                  + ($top_findings | map("- " + .id + " [" + .severity + "] (" + .component + ") CVE: " + (if .cve == "" then "n/a" else .cve end) + " Disclosure: " + (if .disclosure == "" then "n/a" else .disclosure end)) | join("\n"))
                 end
             ' snyk-results.json 2>/dev/null || true)
         fi

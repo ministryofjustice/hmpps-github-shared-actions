@@ -226,6 +226,14 @@ runs:
           exit 1
         fi
 
+        # Ensure Gradle wrappers are executable so Snyk can resolve dependencies in Kotlin/Gradle projects.
+        while IFS= read -r gradlew_path; do
+          chmod +x "$gradlew_path" || true
+        done < <(find "$scan_location" -type f -name 'gradlew')
+
+        echo "Java runtime for fs scan:"
+        java -version || true
+
         policy_path="${{ inputs.snyk_policy_path }}"
         if [[ -z "$policy_path" ]]; then
           policy_path="${{ inputs.location }}/.snyk"
@@ -248,6 +256,23 @@ runs:
         if [[ $cmd_exit -eq 3 ]]; then
           echo "Snyk filesystem scan could not find supported target files in '${{ inputs.location }}'."
           echo "Set 'location' to a directory containing supported manifests (for example pom.xml, build.gradle, package.json, requirements.txt)."
+          exit $cmd_exit
+        fi
+        if [[ $cmd_exit -eq 2 ]]; then
+          echo "Snyk filesystem scan failed to resolve dependencies (exit code 2)."
+          echo "Common causes: private package repo credentials missing, Gradle/Maven auth config missing, or project toolchain mismatch."
+          echo "Re-running Snyk in debug mode to surface root cause..."
+
+          set +e
+          DEBUG='*snyk*' snyk test "${{ inputs.location }}" \
+            --all-projects \
+            --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+            ${policy_arg:+$policy_arg} \
+            -d > snyk-debug.log 2>&1
+          set -e
+
+          echo "Last 200 lines of Snyk debug log:"
+          tail -n 200 snyk-debug.log || true
           exit $cmd_exit
         fi
         if [[ $cmd_exit -gt 1 ]]; then

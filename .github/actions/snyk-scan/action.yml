@@ -233,7 +233,11 @@ runs:
 
         # Preflight Gradle projects to surface dependency/auth issues before Snyk wraps the failure.
         gradle_manifest=$(find "$scan_location" -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print -quit || true)
+        use_all_projects=true
         if [[ -n "$gradle_manifest" ]]; then
+          # Snyk 1.1296.0 + Gradle 9.x can fail in --all-projects mode due to unsupported --build-file usage.
+          # For Gradle repositories, run without --all-projects as a compatibility workaround.
+          use_all_projects=false
           gradle_dir=$(dirname "$gradle_manifest")
           gradlew_cmd=""
           if [[ -x "$gradle_dir/gradlew" ]]; then
@@ -276,12 +280,21 @@ runs:
         fi
 
         set +e
-        snyk test "${{ inputs.location }}" \
-          --all-projects \
-          --severity-threshold="${{ steps.severity.outputs.threshold }}" \
-          ${policy_arg:+$policy_arg} \
-          --json-file-output=snyk-results.json \
-          --sarif-file-output=snyk-results.sarif
+        if [[ "$use_all_projects" == "true" ]]; then
+          snyk test "${{ inputs.location }}" \
+            --all-projects \
+            --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+            ${policy_arg:+$policy_arg} \
+            --json-file-output=snyk-results.json \
+            --sarif-file-output=snyk-results.sarif
+        else
+          echo "Gradle project detected; running Snyk without --all-projects to avoid Gradle 9 compatibility issue."
+          snyk test "${{ inputs.location }}" \
+            --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+            ${policy_arg:+$policy_arg} \
+            --json-file-output=snyk-results.json \
+            --sarif-file-output=snyk-results.sarif
+        fi
         cmd_exit=$?
         set -e
         if [[ $cmd_exit -eq 3 ]]; then
@@ -295,11 +308,18 @@ runs:
           echo "Re-running Snyk in debug mode to surface root cause..."
 
           set +e
-          DEBUG='*snyk*' snyk test "${{ inputs.location }}" \
-            --all-projects \
-            --severity-threshold="${{ steps.severity.outputs.threshold }}" \
-            ${policy_arg:+$policy_arg} \
-            -d > snyk-debug.log 2>&1
+          if [[ "$use_all_projects" == "true" ]]; then
+            DEBUG='*snyk*' snyk test "${{ inputs.location }}" \
+              --all-projects \
+              --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+              ${policy_arg:+$policy_arg} \
+              -d > snyk-debug.log 2>&1
+          else
+            DEBUG='*snyk*' snyk test "${{ inputs.location }}" \
+              --severity-threshold="${{ steps.severity.outputs.threshold }}" \
+              ${policy_arg:+$policy_arg} \
+              -d > snyk-debug.log 2>&1
+          fi
           set -e
 
           if grep -q '===== DEBUG INFORMATION START =====' snyk-debug.log; then

@@ -18,6 +18,10 @@ inputs:
     description: 'A location for scans to take place'
     required: false
     default: '.'
+  java_version:
+    description: 'Java version to install for filesystem scans (used by Kotlin/Gradle/Maven projects)'
+    required: false
+    default: '25'
   snyk_policy_path:
     description: 'Optional path to .snyk policy file used for ignore rules'
     required: false
@@ -133,6 +137,13 @@ runs:
         fi
         echo "threshold=${threshold}" >> "$GITHUB_OUTPUT"
 
+    - name: Setup Java for filesystem scans
+      if: inputs.scan_type == 'fs'
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java_version }}
+
     - name: Snyk Security Scan - image
       id: snyk-analyse-image
       if: inputs.scan_type == 'image'
@@ -176,6 +187,45 @@ runs:
       run: |
         export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
 
+        scan_location="${{ inputs.location }}"
+        if [[ ! -d "$scan_location" ]]; then
+          echo "Snyk filesystem scan location does not exist or is not a directory: '$scan_location'"
+          exit 1
+        fi
+
+        # Fail early with a clear message when the target directory has no supported manifests.
+        if ! find "$scan_location" -type f \( \
+          -name 'package.json' -o \
+          -name 'package-lock.json' -o \
+          -name 'yarn.lock' -o \
+          -name 'pnpm-lock.yaml' -o \
+          -name 'pom.xml' -o \
+          -name 'build.gradle' -o \
+          -name 'build.gradle.kts' -o \
+          -name 'settings.gradle' -o \
+          -name 'settings.gradle.kts' -o \
+          -name 'requirements.txt' -o \
+          -name 'Pipfile' -o \
+          -name 'poetry.lock' -o \
+          -name 'pyproject.toml' -o \
+          -name 'Gemfile' -o \
+          -name 'Gemfile.lock' -o \
+          -name 'go.mod' -o \
+          -name 'go.sum' -o \
+          -name 'composer.json' -o \
+          -name 'composer.lock' -o \
+          -name 'Cargo.toml' -o \
+          -name 'Cargo.lock' -o \
+          -name 'packages.config' -o \
+          -name '*.csproj' -o \
+          -name '*.fsproj' -o \
+          -name '*.vbproj' \
+        \) -print -quit | grep -q .; then
+          echo "Snyk filesystem scan could not find supported target files in '$scan_location'."
+          echo "Set 'location' to a directory containing manifests like package.json, pom.xml, build.gradle, requirements.txt, pyproject.toml, or go.mod."
+          exit 1
+        fi
+
         policy_path="${{ inputs.snyk_policy_path }}"
         if [[ -z "$policy_path" ]]; then
           policy_path="${{ inputs.location }}/.snyk"
@@ -195,6 +245,11 @@ runs:
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?
         set -e
+        if [[ $cmd_exit -eq 3 ]]; then
+          echo "Snyk filesystem scan could not find supported target files in '${{ inputs.location }}'."
+          echo "Set 'location' to a directory containing supported manifests (for example pom.xml, build.gradle, package.json, requirements.txt)."
+          exit $cmd_exit
+        fi
         if [[ $cmd_exit -gt 1 ]]; then
           echo "Snyk filesystem scan failed with exit code $cmd_exit"
           exit $cmd_exit
@@ -241,7 +296,7 @@ runs:
         category: ${{ inputs.scan_type == 'image' && 'snyk-image-scan' || 'snyk-fs-scan' }}
 
     - name: Verify SARIF upload outcome
-      if: ${{ always() }}
+      if: ${{ always() && (steps.snyk-analyse-image.outcome == 'success' || steps.snyk-analyse-fs.outcome == 'success') }}
       shell: bash
       run: |
         if [[ "${{ steps.snyk-upload.outcome }}" != "success" ]]; then

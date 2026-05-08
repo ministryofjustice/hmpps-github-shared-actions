@@ -27,6 +27,7 @@ if ! find "$scan_location" -type f \( \
   -name 'Pipfile' -o \
   -name 'poetry.lock' -o \
   -name 'pyproject.toml' -o \
+  -name 'uv.lock' -o \
   -name 'Gemfile' -o \
   -name 'Gemfile.lock' -o \
   -name 'go.mod' -o \
@@ -44,11 +45,6 @@ if ! find "$scan_location" -type f \( \
   echo "Set 'location' to a directory containing manifests like package.json, pom.xml, build.gradle, requirements.txt, pyproject.toml, or go.mod."
   exit 1
 fi
-
-# Ensure Gradle wrappers are executable so Snyk can resolve dependencies in Kotlin/Gradle projects.
-while IFS= read -r gradlew_path; do
-  chmod +x "$gradlew_path" || true
-done < <(find "$scan_location" -type f -name 'gradlew')
 
 # Preflight Gradle projects to surface dependency/auth issues before Snyk wraps the failure.
 gradle_manifest=$(find "$scan_location" -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print -quit || true)
@@ -140,7 +136,7 @@ fi
 
 if [[ $cmd_exit -eq 2 ]]; then
   echo "Snyk filesystem scan failed to resolve dependencies (exit code 2)."
-  echo "Common causes: private package repo credentials missing, Gradle/Maven auth config missing, or project toolchain mismatch."
+  echo "Common causes: private package repo credentials missing, Gradle/Maven auth config missing, missing ecosystem tools in runner, or project toolchain mismatch."
   echo "Re-running Snyk in debug mode to surface root cause..."
 
   set +e
@@ -165,6 +161,7 @@ if [[ $cmd_exit -eq 2 ]]; then
     echo "Last 200 lines of Snyk debug log:"
     tail -n 200 snyk-debug.log || true
   fi
+
   exit $cmd_exit
 fi
 

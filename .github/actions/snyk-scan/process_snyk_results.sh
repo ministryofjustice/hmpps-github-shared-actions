@@ -4,7 +4,7 @@ set -euo pipefail
 ensure_sarif_file() {
   if [[ ! -s snyk-results.sarif ]]; then
     cat > snyk-results.sarif << 'EOF'
-{"runs":[{"results":[]}]}
+{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Snyk","rules":[]}},"results":[]}]}
 EOF
   fi
 }
@@ -14,6 +14,7 @@ process_sarif() {
 
   jq '
     . as $doc
+    | .version = (.version // "2.1.0")
     | if (($doc.runs // []) | length) <= 1 then
         $doc
       else
@@ -25,10 +26,12 @@ process_sarif() {
             )
           ]
       end
+      | .runs[0].tool.driver.name = (.runs[0].tool.driver.name // "Snyk")
+      | .runs[0].tool.driver.rules = (.runs[0].tool.driver.rules // [])
   ' snyk-results.sarif > snyk-results.single-run.sarif
   mv snyk-results.single-run.sarif snyk-results.sarif
 
-  if [[ ! -s snyk-results.sarif || ! -s snyk-results.json ]]; then
+  if [[ ! -s snyk-results.sarif ]]; then
     return 0
   fi
 
@@ -53,19 +56,33 @@ process_sarif() {
     def all_vulns:
       [
         (
-          docs_roots
+          docs_roots as $root
           | if (.vulnerabilities? | type) == "array" then
               .vulnerabilities[]
+              | if type == "object" then
+                  . + {
+                    __targetFile: (($root.displayTargetFile // $root.targetFile // .displayTargetFile // .targetFile // "") | tostring)
+                  }
+                else
+                  .
+                end
             else
               empty
             end
         ),
         (
-          docs_roots
+          docs_roots as $root
           | if (.applications? | type) == "array" then
-              .applications[]
-              | if type == "object" and (.vulnerabilities? | type) == "array" then
-                  .vulnerabilities[]
+              .applications[] as $app
+              | if ($app | type) == "object" and (($app.vulnerabilities? | type) == "array") then
+                  $app.vulnerabilities[]
+                  | if type == "object" then
+                      . + {
+                        __targetFile: (($app.displayTargetFile // $app.targetFile // $root.displayTargetFile // $root.targetFile // .displayTargetFile // .targetFile // "") | tostring)
+                      }
+                    else
+                      .
+                    end
                 else
                   empty
                 end
@@ -90,10 +107,66 @@ process_sarif() {
       elif $sev == "low" then "note"
       else "warning"
       end;
-    def cves_of($v): ((id_list($v; "CVE")) | map(tostring) | unique | .[:3] | join(", "));
+    def security_severity_of($v):
+      (vuln_sev($v)) as $sev
+      | if $sev == "critical" then "9.0"
+        elif $sev == "high" then "7.0"
+        elif $sev == "medium" then "4.0"
+        elif $sev == "low" then "1.0"
+        else "0.0"
+        end;
+    def cves_of($v): ((id_list($v; "CVE")) | map(tostring) | unique | join(", "));
     def cwes_of($v): ((id_list($v; "CWE")) | map(tostring) | unique | .[:3] | join(", "));
     def ghsas_of($v): ((id_list($v; "GHSA")) | map(tostring) | unique | .[:3] | join(", "));
     def disclosure_of($v): (($v.disclosureTime // $v.publicationTime // $v.creationTime // "") | tostring | .[0:10]);
+    def strip_severity_prefix($t): (($t // "") | tostring | sub("^(?i)(critical|high|medium|low)\\s+severity\\s*-\\s*"; ""));
+    def csv_trimmed($s): (($s // "") | tostring | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "" and . != "n/a")) | unique | join(", "));
+    def with_id_prefix($id; $text):
+      ($id // "issue") as $rid
+      | (strip_severity_prefix($text)) as $clean
+      | if ($clean | startswith($rid + " - ")) then
+          $clean
+        else
+          ($rid + " - " + $clean)
+        end;
+    def with_cve_suffix($text; $cves):
+      (csv_trimmed($cves)) as $cve_text
+      | if $cve_text == "" then
+          $text
+        elif (($text // "") | tostring | contains(" | CVE:")) then
+          $text
+        else
+          (($text // "") | tostring) + " | CVE: " + $cve_text
+        end;
+    def target_file_of($v): (($v.__targetFile // $v.displayTargetFile // $v.targetFile // "") | tostring);
+    def fingerprint_of($v):
+      (
+        ($v.id // "issue") + "|"
+        + package_of($v) + "|"
+        + (target_file_of($v) | if . == "" then "n/a" else . end)
+      );
+    def location_of($v):
+      if (target_file_of($v) != "") then
+        {
+          physicalLocation: {
+            artifactLocation: { uri: target_file_of($v) },
+            region: { startLine: 1 }
+          },
+          logicalLocations: [
+            {
+              fullyQualifiedName: package_of($v)
+            }
+          ]
+        }
+      else
+        {
+          logicalLocations: [
+            {
+              fullyQualifiedName: package_of($v)
+            }
+          ]
+        }
+      end;
     def component_of_result:
       (.locations[0].logicalLocations[0].fullyQualifiedName
         // .locations[0].physicalLocation.artifactLocation.uri
@@ -125,9 +198,27 @@ process_sarif() {
             | (find_vuln($id; $component)) as $v
             | if $v == null then
                 $r
-              elif (($r.message.text // "") | contains(" | Package:")) then
-                $r
               else
+                $r
+                | .message.text = (
+                    (.message.text // ($v.title // "Snyk vulnerability")) as $m
+                    | if ($m | startswith($id + " - ")) then
+                        $m
+                      else
+                        ($id + " - " + $m)
+                      end
+                  )
+                | if ((.locations // []) | length) == 0 then
+                    .locations = [location_of($v)]
+                  elif ((.locations[0].physicalLocation.artifactLocation.uri // "") == "" and (target_file_of($v) != "")) then
+                    .locations[0].physicalLocation.artifactLocation.uri = target_file_of($v)
+                    | .locations[0].physicalLocation.region = ((.locations[0].physicalLocation.region // {}) + {startLine: 1})
+                  else
+                    .
+                  end
+                | if ((.message.text // "") | contains(" | Package:")) then
+                    .
+                  else
                 (
                   " | Package: " + (package_of($v))
                   + " | CVE: " + (if (cves_of($v)) == "" then "n/a" else cves_of($v) end)
@@ -136,8 +227,23 @@ process_sarif() {
                   + " | Disclosure: " + (if (disclosure_of($v)) == "" then "n/a" else disclosure_of($v) end)
                   + " | Ref: https://security.snyk.io/vuln/" + $id
                 ) as $extra
-                | $r
                 | .message.text = ((.message.text // "") + $extra)
+                  end
+                | .properties = (
+                    (.properties // {})
+                    + {
+                        severity: vuln_sev($v),
+                        tags: ((((.properties.tags // []) + ["severity:" + vuln_sev($v)] + ui_tags($v)) | map(tostring)) | unique),
+                        "security-severity": security_severity_of($v),
+                        cve: (if (cves_of($v)) == "" then "n/a" else cves_of($v) end)
+                      }
+                  )
+                | .partialFingerprints = (
+                    (.partialFingerprints // {})
+                    + {
+                        primaryLocationLineHash: fingerprint_of($v)
+                      }
+                  )
               end
           ]
         else
@@ -147,22 +253,22 @@ process_sarif() {
             | {
                 ruleId: (.id // "issue"),
                 level: (level_of($sev)),
-                message: { text: (.title // .id // "Snyk vulnerability") },
+                  message: { text: ((.id // "issue") + " - " + (.title // .id // "Snyk vulnerability")) },
                 locations: [
-                  {
-                    logicalLocations: [
-                      {
-                        fullyQualifiedName: package_of(.)
-                      }
-                    ]
-                  }
+                  location_of(.)
                 ],
                 properties: {
                   severity: $sev,
-                  tags: (["severity:" + $sev] + ui_tags(.))
-                }
+                  tags: (["severity:" + $sev] + ui_tags(.)),
+                    "security-severity": security_severity_of(.),
+                    cve: (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)
+                  },
+                  partialFingerprints: {
+                    primaryLocationLineHash: fingerprint_of(.)
+                  }
               }
           ]
+          | unique_by(.ruleId + "|" + (.locations[0].physicalLocation.artifactLocation.uri // .locations[0].logicalLocations[0].fullyQualifiedName // "unknown"))
         end
       )
     | (
@@ -171,15 +277,42 @@ process_sarif() {
           | {
               id: (.id // "issue"),
               name: (.id // "issue"),
-              shortDescription: { text: (.title // .id // "Snyk vulnerability") },
-              fullDescription: { text: (.title // .description // "Snyk vulnerability") },
+                shortDescription: { text: with_cve_suffix(((.id // "issue") + " - " + (.title // .id // "Snyk vulnerability")); cves_of(.)) },
+                fullDescription: { text: ((.id // "issue") + " - " + (.title // .description // "Snyk vulnerability") + " | CVE: " + (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)) },
               helpUri: ("https://security.snyk.io/vuln/" + (.id // "issue")),
-              properties: { tags: ui_tags(.) }
+              properties: {
+                tags: ui_tags(.),
+                  "security-severity": security_severity_of(.),
+                  cve: (if (cves_of(.)) == "" then "n/a" else cves_of(.) end)
+              }
             }
         ]
         | unique_by(.id)
       ) as $enriched_rules
-    | .runs[0].tool.driver.rules = (((.runs[0].tool.driver.rules // []) + $enriched_rules) | unique_by(.id))
+    | .runs[0].tool.driver.rules = (($enriched_rules + (.runs[0].tool.driver.rules // [])) | unique_by(.id))
+    | .runs[0].tool.driver.rules |= map(
+        (.id // "issue") as $rid
+        | ((.properties.cve // ([((.fullDescription.text // "") | scan("CVE-[0-9]{4}-[0-9]+"))] | unique | join(", ")) // "") | tostring) as $cves
+        | .shortDescription = ((.shortDescription // {}) + {
+          text: with_cve_suffix(with_id_prefix($rid; (.shortDescription.text // .name // .id // "Snyk vulnerability")); $cves)
+          })
+      )
+    | . as $doc2
+    | .runs[0].results |= map(
+        (.ruleId // "issue") as $rid
+        | (($doc2.runs[0].tool.driver.rules // []) | map(select((.id // "") == $rid)) | .[0]) as $rule
+        | ((.properties.cve // $rule.properties.cve // ([((($rule.fullDescription // {}).text // "") | scan("CVE-[0-9]{4}-[0-9]+"))] | unique | join(", ")) // "") | tostring) as $cves
+        | .message.text = with_cve_suffix(with_id_prefix($rid; (.message.text // $rule.shortDescription.text // "Snyk vulnerability")); $cves)
+        | .properties = (
+            (.properties // {})
+            + {
+                cve: (
+                  (csv_trimmed($cves)) as $c
+                  | if $c == "" then "n/a" else $c end
+                )
+              }
+          )
+      )
   ' snyk-results.sarif > snyk-results.enriched.sarif
 
   mv snyk-results.enriched.sarif snyk-results.sarif
@@ -191,8 +324,7 @@ prepare_summary() {
   summary_source="SARIF fallback"
 
   results_count=$(jq '[.runs[0].results[]?] | length' snyk-results.sarif)
-
-  critical_count=$(jq '
+  sarif_counts=$(jq -r '
     def sev:
       (
         ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
@@ -205,53 +337,16 @@ prepare_summary() {
         elif . == "none" then "low"
         else .
         end;
-    [.runs[0].results[]? | select((sev) == "critical")] | length
+    [.runs[0].results[]? | sev] as $s
+    | [
+        ($s | map(select(. == "critical")) | length),
+        ($s | map(select(. == "high")) | length),
+        ($s | map(select(. == "medium")) | length),
+        ($s | map(select(. == "low")) | length)
+      ]
+    | @tsv
   ' snyk-results.sarif)
-  high_count=$(jq '
-    def sev:
-      (
-        ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
-        (.properties.severity? // .level? // "unknown")
-      )
-      | ascii_downcase
-      | if . == "error" then "high"
-        elif . == "warning" then "medium"
-        elif . == "note" then "low"
-        elif . == "none" then "low"
-        else .
-        end;
-    [.runs[0].results[]? | select((sev) == "high")] | length
-  ' snyk-results.sarif)
-  medium_count=$(jq '
-    def sev:
-      (
-        ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
-        (.properties.severity? // .level? // "unknown")
-      )
-      | ascii_downcase
-      | if . == "error" then "high"
-        elif . == "warning" then "medium"
-        elif . == "note" then "low"
-        elif . == "none" then "low"
-        else .
-        end;
-    [.runs[0].results[]? | select((sev) == "medium")] | length
-  ' snyk-results.sarif)
-  low_count=$(jq '
-    def sev:
-      (
-        ((.properties.tags // []) | map(tostring) | map(select(startswith("severity:"))) | (.[0]? | if . == null then null else ltrimstr("severity:") end)) //
-        (.properties.severity? // .level? // "unknown")
-      )
-      | ascii_downcase
-      | if . == "error" then "high"
-        elif . == "warning" then "medium"
-        elif . == "note" then "low"
-        elif . == "none" then "low"
-        else .
-        end;
-    [.runs[0].results[]? | select((sev) == "low")] | length
-  ' snyk-results.sarif)
+  IFS=$'\t' read -r critical_count high_count medium_count low_count <<< "$sarif_counts"
 
   if [[ -s snyk-results.json ]]; then
     json_counts=$(jq -r '
@@ -471,22 +566,6 @@ prepare_summary() {
       | sort_by(.severity | rank)
       | .[]
       | "- \(.rule) [\(.severity)] (\(.component)) CVE: n/a Disclosure: n/a"
-    ' snyk-results.sarif)
-  fi
-
-  if [[ "$results_count" -gt 0 && -z "$top_findings" ]]; then
-    top_findings=$(jq -r '
-      def sev:
-        ((.level? // "unknown") | ascii_downcase
-          | if . == "error" then "high"
-            elif . == "warning" then "medium"
-            elif . == "note" then "low"
-            elif . == "none" then "low"
-            else .
-            end);
-      .runs[0].results[]?
-      | select(sev == "critical" or sev == "high")
-      | "- \(.ruleId // "issue") [\(sev)] (unknown) CVE: n/a Disclosure: n/a"
     ' snyk-results.sarif)
   fi
 

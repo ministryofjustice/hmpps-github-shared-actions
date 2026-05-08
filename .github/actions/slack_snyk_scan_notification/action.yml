@@ -70,7 +70,7 @@ runs:
                       id: (.id // "issue"),
                       severity: sev(.),
                       component: ((.packageName // .name // "unknown") + "@" + (.version // "unknown")),
-                      cve: (((.identifiers.CVE // []) | map(tostring) | unique | .[:2]) | join(", ")),
+                      cve: (((.identifiers.CVE // []) | map(tostring) | unique) | join(", ")),
                       disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                     })
                   | map(select(.severity == "critical" or .severity == "high"))
@@ -114,7 +114,7 @@ runs:
                   id: (.id // "issue"),
                   severity: sev(.),
                   component: ((.packageName // .name // "unknown") + "@" + (.version // "unknown")),
-                  cve: (((.identifiers.CVE // []) | map(tostring) | unique | .[:2]) | join(", ")),
+                  cve: (((.identifiers.CVE // []) | map(tostring) | unique) | join(", ")),
                   disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
                 })
               | map(select(.severity == "critical" or .severity == "high"))

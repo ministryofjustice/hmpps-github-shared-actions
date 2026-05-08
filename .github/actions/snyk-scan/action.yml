@@ -18,6 +18,10 @@ inputs:
     description: 'A location for scans to take place'
     required: false
     default: '.'
+  java_version:
+    description: 'Java version to install for filesystem scans (used by Kotlin/Gradle/Maven projects)'
+    required: false
+    default: '25'
   snyk_policy_path:
     description: 'Optional path to .snyk policy file used for ignore rules'
     required: false
@@ -97,7 +101,10 @@ runs:
     - name: Install Snyk CLI
       shell: bash
       run: |
-        npm install -g snyk@1.1296.0
+        # Shared action controls Snyk CLI version centrally; callers cannot override it.
+        SNYK_CLI_VERSION='1.1304.2'
+        npm install -g "snyk@${SNYK_CLI_VERSION}"
+        snyk --version
 
     - name: Validate Snyk authentication
       shell: bash
@@ -132,6 +139,13 @@ runs:
           threshold='critical'
         fi
         echo "threshold=${threshold}" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Java for filesystem scans
+      if: inputs.scan_type == 'fs'
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java_version }}
 
     - name: Snyk Security Scan - image
       id: snyk-analyse-image
@@ -173,32 +187,11 @@ runs:
       shell: bash
       env:
         SNYK_TOKEN: ${{ inputs.snyk_token }}
+        SCAN_LOCATION: ${{ inputs.location }}
+        SNYK_POLICY_PATH_INPUT: ${{ inputs.snyk_policy_path }}
+        SEVERITY_THRESHOLD: ${{ steps.severity.outputs.threshold }}
       run: |
-        export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
-
-        policy_path="${{ inputs.snyk_policy_path }}"
-        if [[ -z "$policy_path" ]]; then
-          policy_path="${{ inputs.location }}/.snyk"
-        fi
-        policy_arg=""
-        if [[ -f "$policy_path" ]]; then
-          policy_arg="--policy-path=${policy_path}"
-          echo "Applying Snyk policy file: ${policy_path}"
-        fi
-
-        set +e
-        snyk test "${{ inputs.location }}" \
-          --all-projects \
-          --severity-threshold="${{ steps.severity.outputs.threshold }}" \
-          ${policy_arg:+$policy_arg} \
-          --json-file-output=snyk-results.json \
-          --sarif-file-output=snyk-results.sarif
-        cmd_exit=$?
-        set -e
-        if [[ $cmd_exit -gt 1 ]]; then
-          echo "Snyk filesystem scan failed with exit code $cmd_exit"
-          exit $cmd_exit
-        fi
+        bash "${{ github.action_path }}/run_snyk_fs_scan.sh"
 
     - name: Process SARIF for GitHub Security UI
       shell: bash
@@ -232,6 +225,8 @@ runs:
         path: |
           snyk-results.sarif
           snyk-results.json
+          snyk-debug.log
+          gradle-preflight.log
 
     - name: Snyk upload sarif
       id: snyk-upload
@@ -241,7 +236,7 @@ runs:
         category: ${{ inputs.scan_type == 'image' && 'snyk-image-scan' || 'snyk-fs-scan' }}
 
     - name: Verify SARIF upload outcome
-      if: ${{ always() }}
+      if: ${{ always() && (steps.snyk-analyse-image.outcome == 'success' || steps.snyk-analyse-fs.outcome == 'success') }}
       shell: bash
       run: |
         if [[ "${{ steps.snyk-upload.outcome }}" != "success" ]]; then

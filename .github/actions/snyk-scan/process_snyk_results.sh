@@ -270,7 +270,7 @@ process_sarif() {
         ]
         | unique_by(.id)
       ) as $enriched_rules
-    | .runs[0].tool.driver.rules = (((.runs[0].tool.driver.rules // []) + $enriched_rules) | unique_by(.id))
+    | .runs[0].tool.driver.rules = (($enriched_rules + (.runs[0].tool.driver.rules // [])) | unique_by(.id))
   ' snyk-results.sarif > snyk-results.enriched.sarif
 
   mv snyk-results.enriched.sarif snyk-results.sarif

@@ -58,6 +58,7 @@ runs:
         if [[ -n "${{ inputs.helm_allowlist_groups }}" ]]; then
           echo "${{ inputs.helm_allowlist_groups }}" | base64 --decode > ./ip-allowlist-groups.yaml
           echo "ALLOWLIST_GROUPS=--values ./ip-allowlist-groups.yaml" >> $GITHUB_OUTPUT
+          echo "ALLOWLIST_GROUPS_VALUES=./ip-allowlist-groups.yaml" >> $GITHUB_OUTPUT
         fi
 
     - name: Check for IP_ALLOWLIST_GROUPS_VERSION
@@ -66,6 +67,7 @@ runs:
       run: |
         if [[ -n "${{ inputs.helm_allowlist_version }}" ]]; then
           echo "ALLOWLIST_VERSION=--set generic-service.allowlist_version=${{ inputs.helm_allowlist_version }}" >> $GITHUB_OUTPUT
+          echo "ALLOWLIST_VERSION_VALUE=${{ inputs.helm_allowlist_version }}" >> $GITHUB_OUTPUT
         fi
 
     - name: Deploy
@@ -108,12 +110,11 @@ runs:
       if: ${{ startsWith(inputs.environment, 'dev') }}
       shell: bash
       run: |
-        allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION }}"
-        allowlist_groups="${{ steps.check-ip-allowlists.outputs.ALLOWLIST_GROUPS }}"
+        allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION_VALUE }}"
+        allowlist_groups="${{ steps.check-ip-allowlists.outputs.ALLOWLIST_GROUPS_VALUE }}"
         if [[ -z "$allowlist_version" ]]; then
           allowlist_version="not provided"
         fi
-
         cat <<EOF > prod-ip-allowlist-version-details.txt
         allowlist_version: $allowlist_version
         allowlist_groups: $allowlist_groups

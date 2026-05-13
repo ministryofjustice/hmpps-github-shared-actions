@@ -103,3 +103,24 @@ runs:
           ${{ steps.check-ip-allowlists.outputs.ALLOWLIST_GROUPS }} \
           ${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION }} \
           --wait
+
+    - name: Create production deployment details
+      if: ${{ startsWith(inputs.environment, 'dev') }}
+      shell: bash
+      run: |
+        allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION }}"
+        if [[ -z "$allowlist_version" ]]; then
+          allowlist_version="not provided"
+        fi
+
+        cat <<EOF > prod-ip-allowlist-version-details.txt
+        PROD IP allow list version: $allowlist_version
+        EOF
+
+    - name: Upload production deployment details artifact
+      if: ${{ startsWith(inputs.environment, 'dev') }}
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      with:
+        name: prod-deploy-details
+        path: prod-ip-allowlist-version-details.txt
+        overwrite: true

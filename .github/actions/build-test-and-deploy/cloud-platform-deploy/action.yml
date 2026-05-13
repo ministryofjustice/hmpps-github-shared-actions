@@ -109,12 +109,14 @@ runs:
       shell: bash
       run: |
         allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION }}"
+        allowlist_groups="${{ steps.check-ip-allowlists.outputs.ALLOWLIST_GROUPS }}"
         if [[ -z "$allowlist_version" ]]; then
           allowlist_version="not provided"
         fi
 
         cat <<EOF > prod-ip-allowlist-version-details.txt
-        PROD IP allow list version: $allowlist_version
+        allowlist_version: $allowlist_version
+        allowlist_groups: $allowlist_groups
         EOF
 
     - name: Upload production deployment details artifact

@@ -106,21 +106,24 @@ runs:
           --wait
 
     - name: Create production deployment details
+      id: create_allowlist_json
       if: ${{ startsWith(inputs.environment, 'prod') }}
       shell: bash
       run: |
         allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION_VALUE }}"
-        if [[ -z "$allowlist_version" ]]; then
-          allowlist_version="not provided"
+        if [[ -n "$allowlist_version" ]]; then
+          cat <<EOF > prod-ip-allowlist-version-details.json
+          {
+            "allowlist_version": "$allowlist_version"
+          }
+          EOF
+          echo "allowlist_version=true" >> "$GITHUB_OUTPUT"
+        else 
+          echo "allowlist_version=false" >> "$GITHUB_OUTPUT"
         fi
-        cat <<EOF > prod-ip-allowlist-version-details.json
-        {
-          "allowlist_version": "$allowlist_version"
-        }
-        EOF
 
     - name: Upload production deployment details artifact
-      if: ${{ startsWith(inputs.environment, 'prod') && steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION_VALUE != '' }}
+      if: ${{ startsWith(inputs.environment, 'prod') && steps.create_allowlist_json.outputs.allowlist_version == 'true' }}
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: prod-deploy-details

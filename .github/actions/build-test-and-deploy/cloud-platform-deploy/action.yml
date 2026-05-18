@@ -112,11 +112,7 @@ runs:
       run: |
         allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION_VALUE }}"
         if [[ -n "$allowlist_version" ]]; then
-          cat <<EOF > prod-ip-allowlist-version-details.json
-          {
-            "allowlist_version": "$allowlist_version"
-          }
-          EOF
+          printf '{\n  "allowlist_version": "%s"\n}\n' "$allowlist_version" > prod-ip-allowlist-version-details.json
           echo "allowlist_version=true" >> "$GITHUB_OUTPUT"
         else 
           echo "allowlist_version=false" >> "$GITHUB_OUTPUT"

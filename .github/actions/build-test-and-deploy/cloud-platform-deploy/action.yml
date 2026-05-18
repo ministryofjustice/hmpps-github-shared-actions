@@ -107,7 +107,7 @@ runs:
 
     - name: Create production deployment details
       id: create_allowlist_json
-      if: ${{ startsWith(inputs.environment, 'prod') }}
+      if: ${{ startsWith(inputs.environment, 'dev') }}
       shell: bash
       run: |
         allowlist_version="${{ steps.check-ip-allowlists-version.outputs.ALLOWLIST_VERSION_VALUE }}"
@@ -123,7 +123,7 @@ runs:
         fi
 
     - name: Upload production deployment details artifact
-      if: ${{ startsWith(inputs.environment, 'prod') && steps.create_allowlist_json.outputs.allowlist_version == 'true' }}
+      if: ${{ startsWith(inputs.environment, 'dev') && steps.create_allowlist_json.outputs.allowlist_version == 'true' }}
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
       with:
         name: prod-deploy-details

@@ -9,7 +9,7 @@ inputs:
   severity:
     description: 'Customisable severity levels'
     required: false
-    default: 'HIGH,CRITICAL'
+    default: 'critical,high'
   scan_type:
     description: 'A scan type to use - either image (default) or fs'
     required: false

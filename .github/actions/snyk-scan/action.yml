@@ -297,5 +297,4 @@ runs:
       id: snyk-summary
       shell: bash
       run: |
-        python3 "${{ github.action_path }}/process_snyk_results.py" all
-
+        python3 "${{ github.action_path }}/process_snyk_results.py"

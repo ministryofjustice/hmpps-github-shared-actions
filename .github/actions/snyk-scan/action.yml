@@ -60,9 +60,9 @@ outputs:
   low_count:
     description: 'Number of low vulnerabilities found'
     value: ${{ steps.snyk-summary.outputs.low_count }}
-  summary_json:
-    description: 'Slack-formatted JSON summary payload text'
-    value: ${{ steps.snyk-summary.outputs.summary_json }}
+  summary:
+    description: 'Slack-formatted summary payload text'
+    value: ${{ steps.snyk-summary.outputs.summary }}
   top_findings:
     description: 'Top 5 findings for Slack summary'
     value: ${{ steps.snyk-summary.outputs.top_findings }}
@@ -304,5 +304,5 @@ runs:
       shell: bash
       run: |
         echo "Snyk output counts: results=${{ steps.snyk-summary.outputs.results_count }}, critical=${{ steps.snyk-summary.outputs.critical_count }}, high=${{ steps.snyk-summary.outputs.high_count }}, medium=${{ steps.snyk-summary.outputs.medium_count }}, low=${{ steps.snyk-summary.outputs.low_count }}"
-        echo "summary_json (raw):"
-        echo '${{ steps.snyk-summary.outputs.summary_json }}'
+        echo "summary (raw):"
+        echo '${{ steps.snyk-summary.outputs.summary }}'

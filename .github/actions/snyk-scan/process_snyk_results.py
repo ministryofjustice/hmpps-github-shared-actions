@@ -330,7 +330,7 @@ def prepare_summary(doc: dict[str, Any]) -> None:
         summary = "No vulnerabilities found"
         top_findings = ""
 
-    summary_json = json.dumps(f"*Summary*\n```\n{summary.replace(chr(13), '')}\n```")
+    summary = json.dumps(f"*Summary*\n```\n{summary.replace(chr(13), '')}\n```")
 
     github_output = os.getenv("GITHUB_OUTPUT")
     if github_output:
@@ -343,7 +343,7 @@ def prepare_summary(doc: dict[str, Any]) -> None:
             f.write("top_findings<<EOF\n")
             f.write(f"{top_findings}\n")
             f.write("EOF\n")
-            f.write(f"summary_json={summary_json}\n")
+            f.write(f"summary={summary}\n")
 
 
 def main() -> int:

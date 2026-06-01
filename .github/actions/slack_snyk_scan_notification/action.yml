@@ -21,15 +21,15 @@ inputs:
     description: 'Scan context (for example image or fs)'
     required: false
     default: ''
-  summary_json:
-    description: 'Preformatted Slack mrkdwn summary payload text (JSON-encoded)'
+  summary:
+    description: 'Preformatted Slack mrkdwn summary payload text to include in the message, if available'
     required: false
     default: ''
 runs:
   using: "composite"
   steps:
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2
-      if: inputs.summary_json == ''
+      if: inputs.summary == ''
       with:
         method: chat.postMessage
         token: ${{ inputs.SLACK_BOT_TOKEN }}
@@ -59,7 +59,7 @@ runs:
                   text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
 
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2
-      if: inputs.summary_json != ''
+      if: inputs.summary != ''
       with:
         method: chat.postMessage
         token: ${{ inputs.SLACK_BOT_TOKEN }}
@@ -90,4 +90,4 @@ runs:
             - type: section
               text:
                 type: mrkdwn
-                text: ${{ inputs.summary_json }}
+                text: ${{ inputs.summary }}

@@ -267,12 +267,6 @@ runs:
       run: |
         python3 "${{ github.action_path }}/run_snyk_fs_scan.py"
 
-    # - name: Process SARIF and prepare summary
-    #   id: snyk-summary
-    #   shell: bash
-    #   run: |
-    #     python3 "${{ github.action_path }}/process_snyk_results.py" all
-
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       id: snyk-upload-artifact
@@ -298,4 +292,10 @@ runs:
           echo "SARIF upload did not succeed (outcome: ${{ steps.snyk-upload.outcome }})."
           exit 1
         fi
+
+    - name: Process SARIF and prepare summary
+      id: snyk-summary
+      shell: bash
+      run: |
+        python3 "${{ github.action_path }}/process_snyk_results.py" all
 

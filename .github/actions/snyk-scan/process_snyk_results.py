@@ -343,9 +343,6 @@ def prepare_summary(doc: dict[str, Any]) -> None:
             f.write("top_findings<<EOF\n")
             f.write(f"{top_findings}\n")
             f.write("EOF\n")
-            f.write("summary<<EOF\n")
-            f.write(f"{summary}\n")
-            f.write("EOF\n")
             f.write(f"summary_json={summary_json}\n")
 
 

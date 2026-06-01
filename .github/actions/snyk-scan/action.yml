@@ -298,3 +298,11 @@ runs:
       shell: bash
       run: |
         python3 "${{ github.action_path }}/process_snyk_results.py"
+
+    - name: Display Snyk summary outputs for debugging
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        echo "Snyk output counts: results=${{ steps.snyk-summary.outputs.results_count }}, critical=${{ steps.snyk-summary.outputs.critical_count }}, high=${{ steps.snyk-summary.outputs.high_count }}, medium=${{ steps.snyk-summary.outputs.medium_count }}, low=${{ steps.snyk-summary.outputs.low_count }}"
+        echo "summary_json (raw):"
+        echo '${{ steps.snyk-summary.outputs.summary_json }}'

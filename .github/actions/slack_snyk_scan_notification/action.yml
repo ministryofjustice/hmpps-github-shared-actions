@@ -22,134 +22,14 @@ inputs:
     required: false
     default: ''
   summary:
-    description: 'A summary of vulnerabilities'
+    description: 'Preformatted Slack mrkdwn summary payload text to include in the message, if available'
     required: false
-    default: '' 
+    default: ''
 runs:
   using: "composite"
   steps:
-    - name: Resolve summary text
-      id: resolve-summary
-      shell: bash
-      run: |
-        resolved_summary="${{ inputs.summary }}"
-
-        generated_summary=""
-        generated_findings=""
-        if [[ -s snyk-results.json ]]; then
-          generated_summary=$(jq -r '
-              def roots:
-                if type == "array" then .[] else . end;
-              def vulns:
-                [
-                  roots | select(type == "object")
-                  | ((.vulnerabilities // [])[]?), ((.applications // [])[]? | (.vulnerabilities // [])[]?)
-                  | select(type == "object")
-                ];
-              def sev($v):
-                (($v.severity // "unknown") | tostring | ascii_downcase | if . == "moderate" then "medium" else . end);
-              def rank($s):
-                if $s == "critical" then 0
-                elif $s == "high" then 1
-                elif $s == "medium" then 2
-                elif $s == "low" then 3
-                else 4
-                end;
-
-              (vulns) as $v
-              | ($v | map((.id // "issue") + "|" + sev(.) + "|" + ((.packageName // .name // "unknown") + "@" + (.version // "unknown")) ) | unique) as $u
-              | ($u | length) as $total
-              | ($u | map(split("|")[1]) | map(select(. == "critical")) | length) as $critical
-              | ($u | map(split("|")[1]) | map(select(. == "high")) | length) as $high
-              | ($u | map(split("|")[1]) | map(select(. == "medium")) | length) as $medium
-              | ($u | map(split("|")[1]) | map(select(. == "low")) | length) as $low
-              | (roots | select(type == "object") | .summary // "") as $s
-              | (
-                  $v
-                  | map({
-                      id: (.id // "issue"),
-                      severity: sev(.),
-                      component: ((.packageName // .name // "unknown") + "@" + (.version // "unknown")),
-                      cve: (((.identifiers.CVE // []) | map(tostring) | unique) | join(", ")),
-                      disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
-                    })
-                  | map(select(.severity == "critical" or .severity == "high"))
-                  | unique_by(.id + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
-                  | sort_by(rank(.severity), .id)
-                ) as $all_findings
-              | ($all_findings | .[:10]) as $top_findings
-              | ($top_findings | length) as $shown
-              | ($all_findings | length) as $available
-              | (
-                  $top_findings
-                  | map("- " + .id + " [" + .severity + "] (" + .component + ") CVE: " + (if .cve == "" then "n/a" else .cve end) + " Disclosure: " + (if .disclosure == "" then "n/a" else .disclosure end))
-                  | join("\n")
-                ) as $f
-              | "Total: \($total) (Critical: \($critical), High: \($high), Medium: \($medium), Low: \($low))"
-                + (if $s != "" then "\n" + $s else "" end)
-                + (if $f != "" then "\nTop findings shown: \($shown) of \($available)\nFindings:\n" + $f else "" end)
-            ' snyk-results.json 2>/dev/null || true)
-
-          generated_findings=$(jq -r '
-              def roots:
-                if type == "array" then .[] else . end;
-              def vulns:
-                [
-                  roots | select(type == "object")
-                  | ((.vulnerabilities // [])[]?), ((.applications // [])[]? | (.vulnerabilities // [])[]?)
-                  | select(type == "object")
-                ];
-              def sev($v):
-                (($v.severity // "unknown") | tostring | ascii_downcase | if . == "moderate" then "medium" else . end);
-              def rank($s):
-                if $s == "critical" then 0
-                elif $s == "high" then 1
-                elif $s == "medium" then 2
-                elif $s == "low" then 3
-                else 4
-                end;
-
-              vulns
-              | map({
-                  id: (.id // "issue"),
-                  severity: sev(.),
-                  component: ((.packageName // .name // "unknown") + "@" + (.version // "unknown")),
-                  cve: (((.identifiers.CVE // []) | map(tostring) | unique) | join(", ")),
-                  disclosure: ((.disclosureTime // .publicationTime // .creationTime // "") | tostring | .[0:10])
-                })
-              | map(select(.severity == "critical" or .severity == "high"))
-              | unique_by(.id + "|" + .severity + "|" + .component + "|" + .cve + "|" + .disclosure)
-              | sort_by(rank(.severity), .id)
-              as $all_findings
-              | ($all_findings | .[:10]) as $top_findings
-              | if ($top_findings | length) == 0 then ""
-                else
-                  "Top findings shown: " + (($top_findings | length) | tostring) + " of " + (($all_findings | length) | tostring)
-                  + "\nFindings:\n"
-                  + ($top_findings | map("- " + .id + " [" + .severity + "] (" + .component + ") CVE: " + (if .cve == "" then "n/a" else .cve end) + " Disclosure: " + (if .disclosure == "" then "n/a" else .disclosure end)) | join("\n"))
-                end
-            ' snyk-results.json 2>/dev/null || true)
-        fi
-
-        if [[ "$resolved_summary" == "true" || "$resolved_summary" == "false" || -z "$resolved_summary" ]]; then
-          resolved_summary="$generated_summary"
-        elif [[ "$resolved_summary" != *"Findings:"* && "$resolved_summary" != *"CVE:"* && -n "$generated_findings" ]]; then
-          resolved_summary+=$'\n'
-          resolved_summary+="$generated_findings"
-        fi
-
-        if [[ -z "$resolved_summary" || "$resolved_summary" == "true" || "$resolved_summary" == "false" ]]; then
-          resolved_summary="Vulnerabilities found. Detailed summary unavailable."
-        fi
-
-        {
-          echo "summary<<EOF"
-          echo "$resolved_summary"
-          echo "EOF"
-        } >> "$GITHUB_OUTPUT"
-
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2
-      if: steps.resolve-summary.outputs.summary == ''
+      if: inputs.summary == ''
       with:
         method: chat.postMessage
         token: ${{ inputs.SLACK_BOT_TOKEN }}
@@ -178,16 +58,8 @@ runs:
                 - type: mrkdwn
                   text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
 
-    - name: Prepare summary payload
-      if: steps.resolve-summary.outputs.summary != ''
-      id: prepare-summary
-      shell: bash
-      run: |
-        summary_json=$(printf '%s' "${{ steps.resolve-summary.outputs.summary }}" | jq -Rs '"*Summary*\n```\n" + (gsub("\\r"; "")) + "\n```"')
-        echo "summary_json=${summary_json}" >> "$GITHUB_OUTPUT"
-
     - uses: slackapi/slack-github-action@03ea5433c137af7c0495bc0cad1af10403fc800c # v3.0.2
-      if: steps.resolve-summary.outputs.summary != ''
+      if: inputs.summary != ''
       with:
         method: chat.postMessage
         token: ${{ inputs.SLACK_BOT_TOKEN }}
@@ -218,4 +90,4 @@ runs:
             - type: section
               text:
                 type: mrkdwn
-                text: ${{ steps.prepare-summary.outputs.summary_json }}
+                text: ${{ inputs.summary }}

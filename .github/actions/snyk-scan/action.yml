@@ -112,7 +112,7 @@ runs:
         npm install -g "snyk@${SNYK_CLI_VERSION}"
         snyk --version
 
-    - name: Validate Snyk authentication using client_id and client_secret
+    - name: Snyk authentication using client_id and client_secret
       if: inputs.client_id != '' && inputs.client_secret != ''
       shell: bash
       env:
@@ -131,7 +131,7 @@ runs:
           echo "Snyk authentication successful with client credentials."
         fi
 
-    - name: Validate Snyk authentication using api token
+    - name: Snyk authentication using API token
       if: inputs.snyk_token != '' && (inputs.client_id == '' || inputs.client_secret == '')
       shell: bash
       env:

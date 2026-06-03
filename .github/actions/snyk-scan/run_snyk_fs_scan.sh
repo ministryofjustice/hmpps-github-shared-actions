@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export SNYK_TOKEN="$(printf '%s' "${SNYK_TOKEN:-}" | tr -d '\r\n')"
+# set token when provided, otherwise leave OAuth/session auth intact.
+if [[ -n "${SNYK_TOKEN:-}" ]]; then
+  export SNYK_TOKEN="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+else
+  unset SNYK_TOKEN || true
+fi
 
 scan_location="${SCAN_LOCATION:-.}"
 severity_threshold="${SEVERITY_THRESHOLD:-high}"

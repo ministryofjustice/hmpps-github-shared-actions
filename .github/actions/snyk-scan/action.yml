@@ -127,6 +127,8 @@ runs:
         if ! snyk auth --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET" >/dev/null 2>&1; then
           echo "Snyk authentication failed. Check client credentials and org access, and confirm secret values are current."
           exit 1
+        else
+          echo "Snyk authentication successful with client credentials."
         fi
 
     - name: Validate Snyk authentication using api token
@@ -145,6 +147,7 @@ runs:
           echo "Snyk authentication failed. Check API token and org access, and confirm secret values are current."
           exit 1
         else
+          echo "SNYK_TOKEN=$token" >> "$GITHUB_ENV"
           echo "Snyk authentication successful with API token."
         fi
 

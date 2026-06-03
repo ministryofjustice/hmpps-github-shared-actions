@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -90,6 +91,57 @@ def dedupe_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
+def normalize_security_severity(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    num: float
+    if isinstance(value, (int, float)):
+        num = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            num = float(stripped)
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if not math.isfinite(num):
+        return None
+    if num < 0 or num > 10:
+        return None
+
+    return str(num)
+
+
+def sanitize_rule_security_severity(rule: dict[str, Any]) -> None:
+    properties = rule.get("properties")
+    if not isinstance(properties, dict):
+        return
+
+    if "security-severity" not in properties:
+        return
+
+    normalized = normalize_security_severity(properties.get("security-severity"))
+    if normalized is None:
+        properties.pop("security-severity", None)
+    else:
+        properties["security-severity"] = normalized
+
+
+def sanitize_driver_rules(driver: dict[str, Any]) -> None:
+    rules = driver.get("rules")
+    if not isinstance(rules, list):
+        return
+
+    for rule in rules:
+        if isinstance(rule, dict):
+            sanitize_rule_security_severity(rule)
+
+
 def process_sarif() -> dict[str, Any]:
     doc = ensure_sarif_file()
     doc["version"] = str(doc.get("version") or "2.1.0")
@@ -127,13 +179,19 @@ def process_sarif() -> dict[str, Any]:
 
         first["results"] = merged_results
         driver["rules"] = dedupe_rules(merged_rules + list(driver.get("rules") or []))
+        sanitize_driver_rules(driver)
         driver.setdefault("name", "Snyk")
         tool["driver"] = driver
         first["tool"] = tool
 
         doc["runs"] = [first]
 
-    ensure_primary_run(doc)
+    primary_run = ensure_primary_run(doc)
+    primary_tool = primary_run.get("tool") if isinstance(primary_run.get("tool"), dict) else {}
+    primary_driver = primary_tool.get("driver") if isinstance(primary_tool.get("driver"), dict) else {}
+    sanitize_driver_rules(primary_driver)
+    primary_tool["driver"] = primary_driver
+    primary_run["tool"] = primary_tool
     write_sarif(doc)
     return doc
 

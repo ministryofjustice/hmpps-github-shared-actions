@@ -9,7 +9,7 @@ inputs:
   severity:
     description: 'Customisable severity levels'
     required: false
-    default: 'critical,high'
+    default: 'HIGH,CRITICAL'
   scan_type:
     description: 'A scan type to use - either image (default) or fs'
     required: false
@@ -30,12 +30,15 @@ inputs:
     description: 'GitHub token for authentication'
     required: false
     default: ''
+  snyk_token:
+    description: 'Snyk token for authentication'
+    required: false
   client_id:
     description: 'Snyk client ID for authentication'
-    required: true
+    required: false
   client_secret:
     description: 'Snyk client secret for authentication'
-    required: true
+    required: false
   ECR_REGION:
     description: 'The AWS region that the ECR repository was created in'
     required: false
@@ -61,7 +64,7 @@ outputs:
     description: 'Number of low vulnerabilities found'
     value: ${{ steps.snyk-summary.outputs.low_count }}
   summary:
-    description: 'Slack-formatted summary payload text'
+    description: 'Formatted summary of vulnerabilities'
     value: ${{ steps.snyk-summary.outputs.summary }}
   top_findings:
     description: 'Top 5 findings for Slack summary'
@@ -109,7 +112,8 @@ runs:
         npm install -g "snyk@${SNYK_CLI_VERSION}"
         snyk --version
 
-    - name: Validate Snyk authentication
+    - name: Snyk authentication using client_id and client_secret
+      if: inputs.client_id != '' && inputs.client_secret != ''
       shell: bash
       env:
         CLIENT_ID: ${{ inputs.client_id }}
@@ -123,31 +127,55 @@ runs:
         if ! snyk auth --client-id "$CLIENT_ID" --client-secret "$CLIENT_SECRET" >/dev/null 2>&1; then
           echo "Snyk authentication failed. Check client credentials and org access, and confirm secret values are current."
           exit 1
+        else
+          echo "Snyk authentication successful with client credentials."
         fi
+
+    - name: Snyk authentication using API token
+      if: inputs.snyk_token != '' && (inputs.client_id == '' || inputs.client_secret == '')
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk_token }}
+      run: |
+        token="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
+        if [[ -z "$token" ]]; then
+          echo "SNYK_TOKEN is empty. Configure a valid token in repository/org secrets."
+          exit 1
+        fi
+
+        if ! snyk auth --token "$token" >/dev/null 2>&1; then
+          echo "Snyk authentication failed. Check API token and org access, and confirm secret values are current."
+          exit 1
+        else
+          echo "SNYK_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "Snyk authentication successful with API token."
+        fi
+
+    - name: Resolve severity threshold
+      id: severity
+      shell: bash
+      run: |
+        level=$(echo "${{ inputs.severity }}" | tr '[:upper:]' '[:lower:]')
+        threshold='high'
+        if [[ "$level" == *"low"* ]]; then
+          threshold='low'
+        elif [[ "$level" == *"medium"* ]]; then
+          threshold='medium'
+        elif [[ "$level" == *"high"* ]]; then
+          threshold='high'
+        elif [[ "$level" == *"critical"* ]]; then
+          threshold='critical'
+        fi
+        echo "threshold=${threshold}" >> "$GITHUB_OUTPUT"
 
     - name: Detect filesystem project types
       id: detect-fs-project
       if: inputs.scan_type == 'fs'
-      shell: python
+      shell: bash
       env:
         SCAN_LOCATION: ${{ inputs.location }}
       run: |
-        import os
-        import subprocess
-
-        scan_location = os.environ.get("SCAN_LOCATION") or "."
-        cmd = ["python3", "${{ github.action_path }}/detect_fs_project_types.py", scan_location]
-
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        if proc.returncode != 0:
-            if proc.stdout:
-                print(proc.stdout, end="")
-            if proc.stderr:
-                print(proc.stderr, end="")
-            raise SystemExit(proc.returncode)
-
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-            f.write(proc.stdout)
+        bash "${{ github.action_path }}/detect_fs_project_types.sh" "${SCAN_LOCATION:-.}" >> "$GITHUB_OUTPUT"
 
     - name: Prepare Gradle or Maven wrappers
       if: inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
@@ -248,6 +276,7 @@ runs:
           --app-vulns \
           --severity-threshold="${{ steps.severity.outputs.threshold }}" \
           ${policy_arg:+$policy_arg} \
+          --json-file-output=snyk-results.json \
           --sarif-file-output=snyk-results.sarif
         cmd_exit=$?
         set -e
@@ -265,13 +294,31 @@ runs:
         SNYK_POLICY_PATH_INPUT: ${{ inputs.snyk_policy_path }}
         SEVERITY_THRESHOLD: ${{ steps.severity.outputs.threshold }}
       run: |
-        python3 "${{ github.action_path }}/run_snyk_fs_scan.py"
+        bash "${{ github.action_path }}/run_snyk_fs_scan.sh"
 
-    - name: Process SARIF and prepare summary
-      id: snyk-summary
+    - name: Process SARIF for GitHub Security UI
       shell: bash
       run: |
-        python3 "${{ github.action_path }}/process_snyk_results.py"
+        bash "${{ github.action_path }}/process_snyk_results.sh" process-sarif
+
+    - name: Validate SARIF consistency
+      shell: bash
+      run: |
+        sarif_results=$(jq -r '[.runs[0].results[]?] | length' snyk-results.sarif 2>/dev/null || echo 0)
+        json_vulns=$(jq -r '
+          def roots: if type == "array" then .[] else . end;
+          [
+            roots | select(type == "object")
+            | ((.vulnerabilities // [])[]?), ((.applications // [])[]? | (.vulnerabilities // [])[]?)
+            | select(type == "object")
+          ] | length
+        ' snyk-results.json 2>/dev/null || echo 0)
+
+        echo "SARIF results: ${sarif_results}; JSON vulnerabilities: ${json_vulns}"
+        if [[ "${json_vulns}" -gt 0 && "${sarif_results}" -eq 0 ]]; then
+          echo "SARIF has zero results while JSON has vulnerabilities. Failing to avoid silent Security tab non-updates."
+          exit 1
+        fi
 
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -280,6 +327,7 @@ runs:
         name: snyk-check-${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}
         path: |
           snyk-results.sarif
+          snyk-results.json
           snyk-debug.log
           gradle-preflight.log
 
@@ -299,10 +347,8 @@ runs:
           exit 1
         fi
 
-    - name: Display Snyk summary outputs for debugging
-      if: ${{ always() }}
+    - name: Prepare Snyk summary
+      id: snyk-summary
       shell: bash
       run: |
-        echo "Snyk output counts: results=${{ steps.snyk-summary.outputs.results_count }}, critical=${{ steps.snyk-summary.outputs.critical_count }}, high=${{ steps.snyk-summary.outputs.high_count }}, medium=${{ steps.snyk-summary.outputs.medium_count }}, low=${{ steps.snyk-summary.outputs.low_count }}"
-        echo "summary (raw):"
-        echo '${{ steps.snyk-summary.outputs.summary }}'
+        bash "${{ github.action_path }}/process_snyk_results.sh" prepare-summary

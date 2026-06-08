@@ -115,6 +115,17 @@ if [[ -f "$policy_path" ]]; then
 fi
 
 set +e
+
+if [[ -f "$scan_location/pyproject.toml" && -f "$scan_location/uv.lock" ]]; then
+  echo "Ensuring uv dependencies are in sync..."
+
+  if command -v uv >/dev/null 2>&1; then
+    (cd "$scan_location" && uv lock && uv sync)
+  else
+    echo "uv not found, skipping uv sync step"
+  fi
+fi
+
 if [[ "$use_all_projects" == "true" ]]; then
   snyk test "$scan_location" \
     --all-projects \

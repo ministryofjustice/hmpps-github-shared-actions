@@ -227,13 +227,6 @@ runs:
 
         echo "Installed uv: $(uv --version 2>/dev/null || echo 'unknown version')"
 
-    - name: Prepare dependencies
-      if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'uv'
-      shell: bash
-      run: |
-        uv lock
-        uv sync
-
     - name: Setup Java for filesystem scans on Kotlin/Gradle/Maven projects
       if: inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
       uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0

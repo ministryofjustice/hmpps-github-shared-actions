@@ -12,7 +12,7 @@ inputs:
     description: "Kubernetes deployment name, also Helm release name"
     required: true
   changelog_git_paths:
-    default: ""
+    default: ''
     description: When set it will limit the file changes shown in the changelog to the specified paths only. This is useful for multi-project builds where otherwise it will show all changes from all projects.
     required: false
   show_changelog:
@@ -21,7 +21,7 @@ inputs:
   helm_additional_args:
     description: any additional helm arguments
     required: false
-    default: ""
+    default: ''
   helm_timeout:
     description: helm timeout period
     required: false
@@ -47,10 +47,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       with:
         fetch-depth: 0
-
+        persist-credentials: false
     - name: Check for IP_ALLOWLIST_GROUPS_YAML
       shell: bash
       id: check-ip-allowlists

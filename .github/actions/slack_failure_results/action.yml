@@ -2,17 +2,17 @@ name: 'failure Slack message'
 description: 'Sends a slack message based on a file uploaded'
 inputs:
   input_file:
-    description: "filename to be read into a string"
+    description: 'filename to be read into a string'
     required: true
-    default: "results.txt"
+    default: 'results.txt'
   channel_id:
-    description: "Slack channel to send to"
+    description: 'Slack channel to send to'
     required: true
   SLACK_BOT_TOKEN:
-    description: "important slack token"
+    description: 'important slack token'
     required: true
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: process slack message results # returns SLACK_TXT
       id: slack_message_result

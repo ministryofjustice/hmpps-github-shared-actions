@@ -2,30 +2,30 @@ name: 'send a slack release message'
 description: 'For a given channel ID and environment, send a slack message with the release status'
 inputs:
   app_version:
-    description: "version of the app being deployed"
+    description: 'version of the app being deployed'
     required: true
   environment:
-    description: "deployment environment"
+    description: 'deployment environment'
     required: true
   channel_id:
-    description: "Slack channel to send to"
+    description: 'Slack channel to send to'
     required: true
   deploy_outcome:
-    description: "The outcome of the deployment"
+    description: 'The outcome of the deployment'
     required: true
   deployment_changelog:
-    description: "A log of previous deployments"
+    description: 'A log of previous deployments'
     required: false
-    default: ""
+    default: ''
   slack_bot_token:
-    description: "Slack bot token"
+    description: 'Slack bot token'
     required: true
   k8s_deployment_name:
-    description: "Kubernetes deployment name"
+    description: 'Kubernetes deployment name'
     required: true
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Set up Python
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6

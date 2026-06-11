@@ -3,7 +3,7 @@ name: Security CodeQL Github Actions scan
 on:
   workflow_dispatch:
   schedule:
-    - cron: "20 6 * * MON-FRI"
+    - cron: '20 6 * * MON-FRI'
 
 permissions:
   contents: read

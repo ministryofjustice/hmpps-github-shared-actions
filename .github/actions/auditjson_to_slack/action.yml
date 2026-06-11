@@ -7,10 +7,10 @@ inputs:
     default: 'npm-security-check-reports.json'
 outputs:
   SLACK_TXT:
-    description: "The formatted slack message"
+    description: 'The formatted slack message'
     value: ${{ steps.audit-script.outputs.SLACK_TXT }}
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - shell: bash
       id: audit-script

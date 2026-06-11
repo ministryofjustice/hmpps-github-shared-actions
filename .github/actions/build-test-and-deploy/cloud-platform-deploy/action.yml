@@ -42,13 +42,14 @@ inputs:
   autogenerate_scheduled_downtime_cron:
     description: "Whether to set the deterministic scheduled downtime cron values"
     required: false
-    default: 'true'
+    default: "true"
 
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       with:
+        persist-credentials: false
         fetch-depth: 0
 
     - name: Check for IP_ALLOWLIST_GROUPS_YAML

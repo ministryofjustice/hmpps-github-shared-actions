@@ -1,5 +1,5 @@
 name: Build and push docker image to registry
-description: 'action to build and push docker image'
+description: "action to build and push docker image"
 
 outputs:
   digest:
@@ -37,18 +37,18 @@ inputs:
   load:
     description: Load docker image into local docker
     required: false
-    default: 'false'
+    default: "false"
   app_version:
     description: App version
     required: true
   tag_latest:
     description: Tag image as 'latest'
     required: false
-    default: 'true'
+    default: "true"
   upload_image_artifact:
     description: Upload image to artifacts in GitHub Actions
     required: false
-    default: 'false'
+    default: "false"
   image_artifact_retention_days:
     description: Number of days to keep the image in artifacts
     required: false
@@ -61,11 +61,11 @@ inputs:
   download_build_artifacts:
     description: Whether to download the build artifacts prior to running the docker build
     required: false
-    default: 'false'
+    default: "false"
   ECR_REGION:
     description: The AWS region that the ECR repository was created in
     required: false
-    default: 'eu-west-2'
+    default: "eu-west-2"
   ECR_ROLE_TO_ASSUME:
     description: The AWS role to assume to authenticate to ECR
     required: false
@@ -76,7 +76,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      with:
+        persist-credentials: false
     - name: Download build artifacts needed for docker build
       if: inputs.download_build_artifacts == 'true'
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

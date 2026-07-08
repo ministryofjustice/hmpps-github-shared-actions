@@ -320,11 +320,19 @@ runs:
           exit 1
         fi
 
+    - name: Sanitise Snyk artifact name
+      id: snyk-artifact-name
+      shell: bash # language=bash
+      run: echo "name=snyk-check-$(printf '%s' "${SUBPROJECT:-$REPOSITORY_NAME}" | tr '/\\:*?"<>|' '-')" >> "$GITHUB_OUTPUT"
+      env:
+        REPOSITORY_NAME: ${{ github.event.repository.name }}
+        SUBPROJECT: ${{ inputs.subproject }}
+
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       id: snyk-upload-artifact
       with:
-        name: snyk-check-${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}
+        name: ${{ steps.snyk-artifact-name.outputs.name }}
         path: |
           snyk-results.sarif
           snyk-results.json

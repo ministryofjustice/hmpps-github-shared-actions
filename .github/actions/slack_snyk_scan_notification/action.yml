@@ -25,9 +25,41 @@ inputs:
     description: 'A summary of vulnerabilities'
     required: false
     default: '' 
+  image_ref:
+    description: 'Optional full image reference (for example ghcr.io/org/image:tag) used to derive project name'
+    required: false
+    default: ''
 runs:
   using: 'composite'
   steps:
+    - name: Resolve project name
+      id: resolve-project
+      shell: bash
+      env:
+        IMAGE_REF: ${{ inputs.image_ref }}
+        SUBPROJECT: ${{ inputs.subproject }}
+        REPOSITORY_NAME: ${{ github.event.repository.name }}
+      run: |
+        if [[ -n "$IMAGE_REF" ]]; then
+          image_last_segment="${IMAGE_REF##*/}"
+          image_name="${image_last_segment%%[:@]*}"
+          if [[ -n "$image_name" ]]; then
+            project_name="$image_name"
+          else
+            project_name="$REPOSITORY_NAME"
+            if [[ -n "$SUBPROJECT" ]]; then
+              project_name="$SUBPROJECT"
+            fi
+          fi
+        else
+          project_name="$REPOSITORY_NAME"
+          if [[ -n "$SUBPROJECT" ]]; then
+            project_name="$SUBPROJECT"
+          fi
+        fi
+
+        echo "project_name=${project_name}" >> "$GITHUB_OUTPUT"
+
     - name: Resolve summary text
       id: resolve-summary
       shell: bash
@@ -174,7 +206,7 @@ runs:
                 - type: mrkdwn
                   text: "*Repo:*\n${{ github.repository }}"
                 - type: mrkdwn
-                  text: "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
+                  text: "*Project:*\n${{ steps.resolve-project.outputs.project_name }}"
                 - type: mrkdwn
                   text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
 
@@ -212,7 +244,7 @@ runs:
                 - type: mrkdwn
                   text: "*Repo:*\n${{ github.repository }}"
                 - type: mrkdwn
-                  text: "*Project:*\n${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}"
+                  text: "*Project:*\n${{ steps.resolve-project.outputs.project_name }}"
                 - type: mrkdwn
                   text: "*Scan type:*\n${{ inputs.scan_context != '' && inputs.scan_context || 'n/a' }}"
             - type: section

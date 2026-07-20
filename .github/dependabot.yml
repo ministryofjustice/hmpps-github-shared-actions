@@ -1,8 +1,17 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
-    directory: "/"  # Location of workflow files
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "ministryofjustice/hmpps-github-actions/*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+    groups:
+      github-actions-dependencies:
+        patterns:
+          - "*"

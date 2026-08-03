@@ -3,7 +3,7 @@ name: Test binary checksums
 on:
   pull_request:
     paths:
-      - '.github/actions/tool-installers/**'
+      - ".github/actions/tool-installers/**"
   workflow_dispatch:
 
 permissions:
@@ -55,4 +55,4 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/database_schema_report
         with:
-          test_binary_installs: 'true'
+          test_binary_installs: "true"

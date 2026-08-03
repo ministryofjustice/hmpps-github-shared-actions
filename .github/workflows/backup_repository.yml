@@ -17,6 +17,9 @@ jobs:
       SP_CLIENT_SECRET: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
       AZ_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Backup repository to SharePoint
         uses: ./.github/actions/sharepoint_repository_backup
         with:

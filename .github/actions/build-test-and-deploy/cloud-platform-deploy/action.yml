@@ -2,6 +2,10 @@ name: Cloud Platform Deploy
 description: Deploy to Cloud Platform using Helm
 
 inputs:
+  dryrun:
+    description: Whether to actually perform the helm upgrade
+    default: "false"
+    required: false
   environment:
     description: The environment to deploy to (dev/staging/preprod/prod)
     required: true
@@ -88,6 +92,9 @@ runs:
           shutdown_cron="${cron_minute} 21 * * 1-5"
           helm_args+=(--set "generic-service.scheduledDowntime.startup=${startup_cron}")
           helm_args+=(--set "generic-service.scheduledDowntime.shutdown=${shutdown_cron}")
+        fi
+        if [[ "${{ inputs.dryrun }}" == "true" ]]; then
+          helm_args+=(--dry-run=client)
         fi
 
         exec helm upgrade '${{ inputs.k8s_deployment_name }}' '${{ inputs.helm_dir }}/${{ inputs.helm_chart_name }}' \

@@ -4,49 +4,49 @@ description: 'action to generate postgres database schema report, requires postg
 inputs:
   jdk_tag:
     description: Java version
-    default: "21.0"
+    default: '21.0'
   database_name:
-    default: "postgres"
+    default: 'postgres'
     description: Name of the database
   host:
-    default: "localhost"
+    default: 'localhost'
     description: Host name of the database
   port:
-    default: "5432"
+    default: '5432'
     description: Port number of the database
   schema:
-    default: "public"
+    default: 'public'
     description: Schema name
   user:
-    default: "root"
+    default: 'root'
     description: Database user name
   password:
-    default: "dev"
+    default: 'dev'
     description: Database password
   schemaspy_version:
     # renovate: datasource=github-releases depName=schemaspy/schemaspy
-    default: "6.2.4"
+    default: '6.2.4'
     description: Schemaspy version
   schemaspy_sha256:
-    default: "50abf42c6fbf746b36365f81adb9686e1da83344e89f2719a31e6c1209ebcaad"
+    default: '50abf42c6fbf746b36365f81adb9686e1da83344e89f2719a31e6c1209ebcaad'
     description: SHA256 checksum for SchemaSpy JAR (from GitHub releases)
   postgres_driver_version:
     # renovate: datasource=maven depName=org.postgresql:postgresql
-    default: "42.7.3"
+    default: '42.7.3'
     description: Postgres driver version
   postgres_driver_sha256:
-    default: "a2644cbfba1baa145ff7e8c8ef582a6eed7a7ec4ca792f7f054122bdec756268"
+    default: 'a2644cbfba1baa145ff7e8c8ef582a6eed7a7ec4ca792f7f054122bdec756268'
     description: SHA256 checksum for PostgreSQL JDBC driver
   test_binary_installs:
-    default: "false"
+    default: 'false'
     description: When true, only run the binary installation steps (for testing checksums)
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Set up java
       if: ${{ inputs.test_binary_installs != 'true' }}
-      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
       with:
         java-version: ${{ inputs.jdk_tag }}
         distribution: 'temurin'
@@ -91,7 +91,7 @@ runs:
     
     - name: Upload schema report
       if: ${{ inputs.test_binary_installs != 'true' }}
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
       with:
         name: Database Schema Report
         path: /tmp/schemaspy

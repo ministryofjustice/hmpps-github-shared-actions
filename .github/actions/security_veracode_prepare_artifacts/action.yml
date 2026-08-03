@@ -4,13 +4,13 @@ inputs:
   docker_image_app_dir:
     description: Directory inside the docker image where the application artifacts are saved
     required: false
-    default: "/app"
+    default: '/app'
   additional_docker_build_args:
     description: additional build arguments
     required: false
-    default: ""
+    default: ''
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
   - name: run the script to do the thing
     shell: bash

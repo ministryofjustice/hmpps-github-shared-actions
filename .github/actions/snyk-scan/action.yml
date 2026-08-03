@@ -39,6 +39,10 @@ inputs:
   client_secret:
     description: 'Snyk client secret for authentication'
     required: false
+  image_ref:
+    description: Full image reference to scan (eg. ghcr.io/org/name:sha)
+    required: false
+    default: ''
   ECR_REGION:
     description: 'The AWS region that the ECR repository was created in'
     required: false
@@ -79,7 +83,7 @@ runs:
     - name: Check repository in helm_deploy/values.yaml
       id: check-package-repo
       shell: bash
-      if: inputs.scan_type == 'image'
+      if: inputs.scan_type == 'image' && inputs.image_ref == ''
       run: |
         echo 'checking package repository for ${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:'
         repo_info=$(grep -rh 'repository: ' --include="values.yaml" | grep ${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}} | head -n1 | awk -F'[:/ ]+' '{print $3"/"$4}')
@@ -97,7 +101,7 @@ runs:
       uses: aws-actions/amazon-ecr-login@19d944daaa35f0fa1d3f7f8af1d3f2e5de25c5b7 # v2.1.4
 
     - name: Login to GHCR for private images
-      if: ${{ inputs.scan_type == 'image' && startsWith(steps.check-package-repo.outputs.repo, 'ghcr.io/') && github.event.repository.visibility != 'public' }}
+      if: ${{ inputs.scan_type == 'image' && (startsWith(steps.check-package-repo.outputs.repo, 'ghcr.io/') || startsWith(inputs.image_ref, 'ghcr.io/')) && github.event.repository.visibility != 'public' }}
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
       with:
         registry: ghcr.io
@@ -236,15 +240,15 @@ runs:
 
     - name: Setup Go for filesystem scans
       if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'go'
-      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
 
     - name: Setup .NET for filesystem scans
       if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'dotnet'
-      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
 
     - name: Setup Ruby for filesystem scans
       if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'ruby'
-      uses: ruby/setup-ruby@c4e5b1316158f92e3d49443a9d58b31d25ac0f8f # v1
+      uses: ruby/setup-ruby@c4e5b1316158f92e3d49443a9d58b31d25ac0f8f # v1.306.0
 
     # - name: Setup PHP for filesystem scans
     #   if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'php'
@@ -259,7 +263,11 @@ runs:
       if: inputs.scan_type == 'image'
       shell: bash
       run: |
-        image_ref="${{ steps.check-package-repo.outputs.repo }}/${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:latest"
+        if [[ -n "${{ inputs.image_ref }}" ]]; then
+          image_ref="${{ inputs.image_ref }}"
+        else
+          image_ref="${{ steps.check-package-repo.outputs.repo }}/${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject}}:latest"
+        fi
 
         policy_path="${{ inputs.snyk_policy_path }}"
         if [[ -z "$policy_path" ]]; then
@@ -320,11 +328,19 @@ runs:
           exit 1
         fi
 
+    - name: Sanitise Snyk artifact name
+      id: snyk-artifact-name
+      shell: bash # language=bash
+      run: echo "name=snyk-check-$(printf '%s' "${SUBPROJECT:-$REPOSITORY_NAME}" | tr '/\\:*?"<>|' '-')" >> "$GITHUB_OUTPUT"
+      env:
+        REPOSITORY_NAME: ${{ github.event.repository.name }}
+        SUBPROJECT: ${{ inputs.subproject }}
+
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       id: snyk-upload-artifact
       with:
-        name: snyk-check-${{ inputs.subproject == '' && github.event.repository.name || inputs.subproject }}
+        name: ${{ steps.snyk-artifact-name.outputs.name }}
         path: |
           snyk-results.sarif
           snyk-results.json

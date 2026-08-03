@@ -2,15 +2,15 @@ name: 'prepare slack message'
 description: 'Takes a text file containing output/results and turns it into a slack-compatible environment variable'
 inputs:
   input_file:
-    description: "filename to be read into a string"
+    description: 'filename to be read into a string'
     required: true
-    default: "results.txt"
+    default: 'results.txt'
 outputs:
   SLACK_TXT:
-    description: "Slack text"
+    description: 'Slack text'
     value: ${{ steps.process-results.outputs.SLACK_TXT }}
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
   - name: Slack - Process Results Text
     id: process-results

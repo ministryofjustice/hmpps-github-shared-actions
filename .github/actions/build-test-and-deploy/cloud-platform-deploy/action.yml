@@ -55,7 +55,6 @@ runs:
       with:
         persist-credentials: false
         fetch-depth: 0
-        persist-credentials: false
     - name: Check for IP_ALLOWLIST_GROUPS_YAML
       shell: bash
       id: check-ip-allowlists

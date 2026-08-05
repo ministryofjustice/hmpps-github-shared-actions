@@ -29,7 +29,8 @@ runs:
 
     - name: Upload archive and enforce retention
       shell: bash
-      run: bash "${{ github.action_path }}/backup_repository_to_sharepoint.sh"
+      run: |
+        python3 ${{ github.action_path }}/backup_repository_to_sharepoint.py
       env:
         RETENTION_COUNT: ${{ inputs.retention_count }}
         ARCHIVE_PATH: ${{ steps.create-archive.outputs.archive_path }}

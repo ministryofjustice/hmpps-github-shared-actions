@@ -103,14 +103,14 @@ runs:
         password: ${{ github.token }}
 
     - name: Configure AWS credentials
-      if: ${{ inputs.docker_registry == 'ecr' }}
+      if: ${{ inputs.docker_registry == 'ecr' && inputs.push == 'true' }}
       uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
       with:
         role-to-assume: ${{ inputs.ECR_ROLE_TO_ASSUME }}
         aws-region: ${{ inputs.ECR_REGION }}
 
     - name: Login to Amazon ECR
-      if: ${{ inputs.docker_registry == 'ecr' }}
+      if: ${{ inputs.docker_registry == 'ecr' && inputs.push == 'true' }}
       uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2.1.1
 
     - name: Set Docker Tags

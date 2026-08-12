@@ -121,6 +121,7 @@ runs:
       if: github.actor != 'dependabot[bot]'
       shell: bash
       run: |
+        echo "Hello Welcome to Snyk Scanner"
         # Shared action controls Snyk CLI version centrally; callers cannot override it.
         SNYK_CLI_VERSION='1.1304.2'
         npm install -g "snyk@${SNYK_CLI_VERSION}"

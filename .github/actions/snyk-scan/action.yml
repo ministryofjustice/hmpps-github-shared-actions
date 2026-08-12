@@ -107,17 +107,28 @@ runs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ inputs.github_token }}
-
-    - name: Install Snyk CLI
+    - name: Dependabot Check
+      if: github.actor == 'dependabot[bot]'
+      id: dependabot
       shell: bash
       run: |
+        if [[ ${{ github.actor }} == "dependabot[bot]" ]];
+        then
+          echo "Dependabot doesn't have access to Snyk Credentails, so remaining steps can't run sorry :()"
+          echo "snyk_dependabot_detected=true" >> "$GITHUB_ENV"
+        fi
+    - name: Install Snyk CLI
+      if: github.actor != 'dependabot[bot]'
+      shell: bash
+      run: |
+        echo "Hello Welcome to Snyk Scanner"
         # Shared action controls Snyk CLI version centrally; callers cannot override it.
         SNYK_CLI_VERSION='1.1304.2'
         npm install -g "snyk@${SNYK_CLI_VERSION}"
         snyk --version
 
     - name: Snyk authentication using client_id and client_secret
-      if: inputs.client_id != '' && inputs.client_secret != ''
+      if: github.actor != 'dependabot[bot]' && inputs.client_id != '' && inputs.client_secret != ''
       shell: bash
       env:
         CLIENT_ID: ${{ inputs.client_id }}
@@ -136,7 +147,7 @@ runs:
         fi
 
     - name: Snyk authentication using API token
-      if: inputs.snyk_token != '' && (inputs.client_id == '' || inputs.client_secret == '')
+      if: github.actor != 'dependabot[bot]' && inputs.snyk_token != '' && (inputs.client_id == '' || inputs.client_secret == '')
       shell: bash
       env:
         SNYK_TOKEN: ${{ inputs.snyk_token }}
@@ -157,6 +168,7 @@ runs:
 
     - name: Resolve severity threshold
       id: severity
+      if: github.actor != 'dependabot[bot]'
       shell: bash
       run: |
         level=$(echo "${{ inputs.severity }}" | tr '[:upper:]' '[:lower:]')
@@ -174,7 +186,7 @@ runs:
 
     - name: Detect filesystem project types
       id: detect-fs-project
-      if: inputs.scan_type == 'fs'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs'
       shell: bash
       env:
         SCAN_LOCATION: ${{ inputs.location }}
@@ -182,7 +194,7 @@ runs:
         bash "${{ github.action_path }}/detect_fs_project_types.sh" "${SCAN_LOCATION:-.}" >> "$GITHUB_OUTPUT"
 
     - name: Prepare Gradle or Maven wrappers
-      if: inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
       shell: bash
       env:
         SCAN_LOCATION: ${{ inputs.location }}
@@ -208,7 +220,7 @@ runs:
         fi
 
     - name: Setup uv for filesystem scans
-      if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'uv'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'uv'
       shell: bash
       run: |
         if command -v uv >/dev/null 2>&1; then
@@ -232,22 +244,22 @@ runs:
         echo "Installed uv: $(uv --version 2>/dev/null || echo 'unknown version')"
 
     - name: Setup Java for filesystem scans on Kotlin/Gradle/Maven projects
-      if: inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
+      if: github.actor != 'dependabot[bot]' &&inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
       uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
       with:
         distribution: temurin
         java-version: ${{ inputs.java_version }}
 
     - name: Setup Go for filesystem scans
-      if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'go'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'go'
       uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
 
     - name: Setup .NET for filesystem scans
-      if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'dotnet'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'dotnet'
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
 
     - name: Setup Ruby for filesystem scans
-      if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'ruby'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'ruby'
       uses: ruby/setup-ruby@c4e5b1316158f92e3d49443a9d58b31d25ac0f8f # v1.306.0
 
     # - name: Setup PHP for filesystem scans
@@ -260,7 +272,7 @@ runs:
 
     - name: Snyk Security Scan - image
       id: snyk-analyse-image
-      if: inputs.scan_type == 'image'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'image'
       shell: bash
       run: |
         if [[ -n "${{ inputs.image_ref }}" ]]; then
@@ -295,7 +307,7 @@ runs:
 
     - name: Snyk Security Scan - filesystem
       id: snyk-analyse-fs
-      if: inputs.scan_type == 'fs'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs'
       shell: bash
       env:
         SCAN_LOCATION: ${{ inputs.location }}
@@ -306,11 +318,13 @@ runs:
 
     - name: Process SARIF for GitHub Security UI
       shell: bash
+      if: github.actor != 'dependabot[bot]' 
       run: |
         bash "${{ github.action_path }}/process_snyk_results.sh" process-sarif
 
     - name: Validate SARIF consistency
       shell: bash
+      if: github.actor != 'dependabot[bot]' 
       run: |
         sarif_results=$(jq -r '[.runs[0].results[]?] | length' snyk-results.sarif 2>/dev/null || echo 0)
         json_vulns=$(jq -r '
@@ -330,6 +344,7 @@ runs:
 
     - name: Sanitise Snyk artifact name
       id: snyk-artifact-name
+      if: github.actor != 'dependabot[bot]' 
       shell: bash # language=bash
       run: echo "name=snyk-check-$(printf '%s' "${SUBPROJECT:-$REPOSITORY_NAME}" | tr '/\\:*?"<>|' '-')" >> "$GITHUB_OUTPUT"
       env:
@@ -338,6 +353,7 @@ runs:
 
     - name: Upload Snyk artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: github.actor != 'dependabot[bot]' 
       id: snyk-upload-artifact
       with:
         name: ${{ steps.snyk-artifact-name.outputs.name }}
@@ -349,13 +365,14 @@ runs:
 
     - name: Snyk upload sarif
       id: snyk-upload
+      if: github.actor != 'dependabot[bot]' 
       uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
       with:
         sarif_file: 'snyk-results.sarif'
         category: ${{ inputs.scan_type == 'image' && 'snyk-image-scan' || 'snyk-fs-scan' }}
 
     - name: Verify SARIF upload outcome
-      if: ${{ always() && (steps.snyk-analyse-image.outcome == 'success' || steps.snyk-analyse-fs.outcome == 'success') }}
+      if: ${{ github.actor != 'dependabot[bot]' && (steps.snyk-analyse-image.outcome == 'success' || github.actor != 'dependabot[bot]' && steps.snyk-analyse-fs.outcome == 'success') }}
       shell: bash
       run: |
         if [[ "${{ steps.snyk-upload.outcome }}" != "success" ]]; then
@@ -364,6 +381,7 @@ runs:
         fi
 
     - name: Prepare Snyk summary
+      if: github.actor != 'dependabot[bot]' 
       id: snyk-summary
       shell: bash
       run: |

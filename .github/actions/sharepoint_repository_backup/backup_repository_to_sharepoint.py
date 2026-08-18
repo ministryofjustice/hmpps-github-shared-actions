@@ -113,7 +113,7 @@ def init_graph_context(access_token, graph_host, graph_site_path, graph_doc_libr
     log.error(drives_body)
     sys.exit(1)
 
-  log.info(f'Graph context resolved successfully. Site ID: {site_id}, Drive ID: {drive_id}')
+  log.debug(f'Graph context resolved successfully. Site ID: {site_id}, Drive ID: {drive_id}')
   return site_id, drive_id
 
 

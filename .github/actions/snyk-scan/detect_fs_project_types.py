@@ -226,31 +226,19 @@ def main():
     project_type = 'python'
 
   if project_type == 'ruby':
-    ruby_version = detect_ruby_version(scan_location)
-
-  if project_type in {'gradle', 'maven'}:
-    java_version = detect_java_version(scan_location)
-
-  if project_type == 'go':
-    go_version = detect_go_version(scan_location)
-
-  if project_type == 'dotnet':
-    dotnet_version = detect_dotnet_version(scan_location)
+    version = detect_ruby_version(scan_location)
+  elif project_type in {'gradle', 'maven'}:
+    version = detect_java_version(scan_location)
+  elif project_type == 'go':
+    version = detect_go_version(scan_location)
+  elif project_type == 'dotnet':
+    version = detect_dotnet_version(scan_location)
 
   print(f'Detected project_type={project_type}', file=sys.stderr)
   print(f'project_type={project_type}')
-  if project_type in {'gradle', 'maven'}:
-    print(f'Detected java_version={java_version}', file=sys.stderr)
-    print(f'java_version={java_version}')
-  elif project_type == 'ruby':
-    print(f'Detected ruby_version={ruby_version}', file=sys.stderr)
-    print(f'ruby_version={ruby_version}')
-  elif project_type == 'go':
-    print(f'Detected go_version={go_version}', file=sys.stderr)
-    print(f'go_version={go_version}')
-  elif project_type == 'dotnet':
-    print(f'Detected dotnet_version={dotnet_version}', file=sys.stderr)
-    print(f'dotnet_version={dotnet_version}')
+  if project_type in {'ruby', 'gradle', 'maven', 'go', 'dotnet'}:
+    print(f'Detected version={version}', file=sys.stderr)
+    print(f'version={version}')
 
   if not project_type or project_type == 'unknown':
     print(f'summary_message={UNKNOWN_PROJECT_MESSAGE}')

@@ -2,6 +2,7 @@ import json
 import os
 import sys  
 
+UNKNOWN_PROJECT_MESSAGE = 'FS file scan not supported on this repo , no valid snyk contents'
 
 def has_file(location, names):
   for root, _, files in os.walk(location):
@@ -236,15 +237,25 @@ def main():
   if project_type == 'dotnet':
     dotnet_version = detect_dotnet_version(scan_location)
 
+  print(f'Detected project_type={project_type}', file=sys.stderr)
   print(f'project_type={project_type}')
   if project_type in {'gradle', 'maven'}:
+    print(f'Detected java_version={java_version}', file=sys.stderr)
     print(f'java_version={java_version}')
   elif project_type == 'ruby':
+    print(f'Detected ruby_version={ruby_version}', file=sys.stderr)
     print(f'ruby_version={ruby_version}')
   elif project_type == 'go':
+    print(f'Detected go_version={go_version}', file=sys.stderr)
     print(f'go_version={go_version}')
   elif project_type == 'dotnet':
+    print(f'Detected dotnet_version={dotnet_version}', file=sys.stderr)
     print(f'dotnet_version={dotnet_version}')
+
+  if not project_type or project_type == 'unknown':
+    print(f'summary_message={UNKNOWN_PROJECT_MESSAGE}')
+    print(UNKNOWN_PROJECT_MESSAGE, file=sys.stderr)
+    sys.exit(1)
 
 
 if __name__ == '__main__':

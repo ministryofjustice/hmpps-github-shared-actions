@@ -193,43 +193,6 @@ runs:
       run: |
         python3 "${{ github.action_path }}/detect_fs_project_types.py" "${SCAN_LOCATION:-.}" >> "$GITHUB_OUTPUT"
 
-    - name: Debug detected filesystem project metadata
-      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs'
-      shell: bash
-      run: |
-        project_type="${{ steps.detect-fs-project.outputs.project_type }}"
-        echo "Detected project_type=${project_type}"
-
-        case "${project_type}" in
-          gradle|maven)
-            echo "Detected java_version=${{ steps.detect-fs-project.outputs.java_version }}"
-            ;;
-          ruby)
-            echo "Detected ruby_version=${{ steps.detect-fs-project.outputs.ruby_version }}"
-            ;;
-          go)
-            echo "Detected go_version=${{ steps.detect-fs-project.outputs.go_version }}"
-            ;;
-          dotnet)
-            echo "Detected dotnet_version=${{ steps.detect-fs-project.outputs.dotnet_version }}"
-            ;;
-        esac
-
-    - name: Validate filesystem project type
-      id: validate-fs-project
-      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs'
-      shell: bash
-      env:
-        PROJECT_TYPE: ${{ steps.detect-fs-project.outputs.project_type }}
-        SCAN_LOCATION: ${{ inputs.location }}
-      run: |
-        if [[ -z "$PROJECT_TYPE" || "$PROJECT_TYPE" == "unknown" ]]; then
-          message='FS file scan not supported on this repo , no valid snyk contents'
-          echo "summary_message=${message}" >> "$GITHUB_OUTPUT"
-          echo "$message"
-          exit 1
-        fi
-
     - name: Prepare Gradle or Maven wrappers
       if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
       shell: bash
@@ -285,25 +248,19 @@ runs:
       uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
       with:
         distribution: temurin
-        java-version: ${{ steps.detect-fs-project.outputs.java_version != '' && steps.detect-fs-project.outputs.java_version || inputs.java_version }}
+        java-version: ${{ inputs.java_version }}
 
     - name: Setup Go for filesystem scans
       if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'go'
       uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-      with:
-        go-version: ${{ steps.detect-fs-project.outputs.go_version != '' && steps.detect-fs-project.outputs.go_version || 'stable' }}
 
     - name: Setup .NET for filesystem scans
       if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'dotnet'
       uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
-      with:
-        dotnet-version: ${{ steps.detect-fs-project.outputs.dotnet_version != '' && steps.detect-fs-project.outputs.dotnet_version || '8.0.x' }}
 
     - name: Setup Ruby for filesystem scans
       if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'ruby'
       uses: ruby/setup-ruby@c4e5b1316158f92e3d49443a9d58b31d25ac0f8f # v1.306.0
-      with:
-        ruby-version: ${{ steps.detect-fs-project.outputs.ruby_version != '' && steps.detect-fs-project.outputs.ruby_version || '3.3' }}
 
     # - name: Setup PHP for filesystem scans
     #   if: inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type == 'php'

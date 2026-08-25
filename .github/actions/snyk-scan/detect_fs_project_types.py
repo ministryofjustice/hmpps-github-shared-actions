@@ -199,23 +199,25 @@ def main():
     sys.exit(1)
 
   project_type = 'unknown'
-  ruby_version = ''
-  java_version = ''
-  go_version = ''
-  dotnet_version = ''
+  version = None
 
   if has_file(scan_location, {'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'}):
     project_type = 'gradle'
+    version = detect_java_version(scan_location)
   elif has_file(scan_location, {'pom.xml'}):
     project_type = 'maven'
+    version = detect_java_version(scan_location)
   elif has_file(scan_location, {'uv.lock'}):
     project_type = 'uv'
   elif has_file(scan_location, {'go.mod', 'go.sum'}):
     project_type = 'go'
+    version = detect_go_version(scan_location)
   elif has_file(scan_location, {'packages.config'}) or has_suffix_file(scan_location, {'.csproj', '.fsproj', '.vbproj'}):
     project_type = 'dotnet'
+    version = detect_dotnet_version(scan_location)
   elif has_file(scan_location, {'Gemfile', 'Gemfile.lock'}):
     project_type = 'ruby'
+    version = detect_ruby_version(scan_location)
   elif has_file(scan_location, {'composer.json', 'composer.lock'}):
     project_type = 'php'
   elif has_file(scan_location, {'Cargo.toml', 'Cargo.lock'}):
@@ -224,27 +226,15 @@ def main():
     project_type = 'node'
   elif has_file(scan_location, {'requirements.txt', 'Pipfile', 'poetry.lock', 'pyproject.toml'}):
     project_type = 'python'
-
-  if project_type == 'ruby':
-    version = detect_ruby_version(scan_location)
-  elif project_type in {'gradle', 'maven'}:
-    version = detect_java_version(scan_location)
-  elif project_type == 'go':
-    version = detect_go_version(scan_location)
-  elif project_type == 'dotnet':
-    version = detect_dotnet_version(scan_location)
+  else:
+    print(f'summary_message={UNKNOWN_PROJECT_MESSAGE}')
+    print(UNKNOWN_PROJECT_MESSAGE, file=sys.stderr)
 
   print(f'Detected project_type={project_type}', file=sys.stderr)
   print(f'project_type={project_type}')
-  if project_type in {'ruby', 'gradle', 'maven', 'go', 'dotnet'}:
+  if version:
     print(f'Detected version={version}', file=sys.stderr)
     print(f'version={version}')
-
-  if not project_type or project_type == 'unknown':
-    print(f'summary_message={UNKNOWN_PROJECT_MESSAGE}')
-    print(UNKNOWN_PROJECT_MESSAGE, file=sys.stderr)
-    sys.exit(1)
-
 
 if __name__ == '__main__':
   main()

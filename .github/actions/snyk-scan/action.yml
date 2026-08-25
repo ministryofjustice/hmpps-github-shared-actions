@@ -191,7 +191,7 @@ runs:
       env:
         SCAN_LOCATION: ${{ inputs.location }}
       run: |
-        bash "${{ github.action_path }}/detect_fs_project_types.sh" "${SCAN_LOCATION:-.}" >> "$GITHUB_OUTPUT"
+        python3 "${{ github.action_path }}/detect_fs_project_types.py" "${SCAN_LOCATION:-.}" >> "$GITHUB_OUTPUT"
 
     - name: Prepare Gradle or Maven wrappers
       if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && (steps.detect-fs-project.outputs.project_type == 'gradle' || steps.detect-fs-project.outputs.project_type == 'maven')
@@ -307,7 +307,7 @@ runs:
 
     - name: Snyk Security Scan - filesystem
       id: snyk-analyse-fs
-      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs'
+      if: github.actor != 'dependabot[bot]' && inputs.scan_type == 'fs' && steps.detect-fs-project.outputs.project_type != 'unknown'
       shell: bash
       env:
         SCAN_LOCATION: ${{ inputs.location }}
@@ -345,7 +345,7 @@ runs:
     - name: Sanitise Snyk artifact name
       id: snyk-artifact-name
       if: github.actor != 'dependabot[bot]' 
-      shell: bash # language=bash
+      shell: bash
       run: echo "name=snyk-check-$(printf '%s' "${SUBPROJECT:-$REPOSITORY_NAME}" | tr '/\\:*?"<>|' '-')" >> "$GITHUB_OUTPUT"
       env:
         REPOSITORY_NAME: ${{ github.event.repository.name }}

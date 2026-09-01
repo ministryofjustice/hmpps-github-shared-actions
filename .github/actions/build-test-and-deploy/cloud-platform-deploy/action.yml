@@ -205,7 +205,7 @@ runs:
       continue-on-error: true
       shell: bash
       env:
-        GH_TOKEN: ${{ steps.eventmanager_app_token.outputs.token }}
+        GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
         EVENT_HANDLER_REPO: ministryofjustice/hmpps-eventmanager
         EVENT_HANDLER_WORKFLOW: receive-event.yml
         CORRELATION_ID: ${{ steps.eventmanager_dispatch.outputs.correlation_id }}

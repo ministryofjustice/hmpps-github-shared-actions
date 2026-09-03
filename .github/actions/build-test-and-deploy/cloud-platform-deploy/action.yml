@@ -149,59 +149,6 @@ runs:
         path: prod-ip-allowlist-version-details.json
         overwrite: true
 
-    - name: Generate installation token for hmpps-eventmanager app
-      id: eventmanager_app_token
-      if: ${{ inputs.dryrun != 'true' && inputs.eventmanager_private_key != '' }}
-      continue-on-error: true
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-      with:
-        app-id: "4738387" # hmpps-sre-eventmanager GitHub App
-        private-key: ${{ inputs.eventmanager_private_key }}
-        owner: ministryofjustice
-        repositories: hmpps-eventmanager
-
-    - name: Notify hmpps-eventmanager of deployment
-      id: eventmanager_dispatch
-      if: ${{ inputs.dryrun != 'true' && inputs.eventmanager_private_key != '' }}
-      continue-on-error: true
-      shell: bash
-      env:
-        GH_TOKEN: ${{ steps.eventmanager_app_token.outputs.token }}
-        APPLICATION: ${{ inputs.application != '' && inputs.application || inputs.k8s_deployment_name }}
-        ENVIRONMENT: ${{ inputs.environment }}
-        VERSION: ${{ inputs.version }}
-        COMMIT_SHA: ${{ github.sha }}
-        DEPLOYED_BY: ${{ github.triggering_actor }}
-        SOURCE_REPO: ${{ github.repository }}
-        ARTIFACT_NAME: ${{ inputs.artifact_name }}
-        ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
-        SOURCE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      run: |
-        set -uo pipefail
-        if [[ -z "${GH_TOKEN}" ]]; then
-          echo "::warning title=Event manager notification skipped::Could not mint a GitHub App token, so no deployment event was sent. The deployment itself succeeded."
-          exit 0
-        fi
-
-        correlation_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
-        if ! gh workflow run receive-event.yml \
-          --repo ministryofjustice/hmpps-eventmanager \
-          --ref main \
-          --field application="${APPLICATION}" \
-          --field environment="${ENVIRONMENT}" \
-          --field version="${VERSION}" \
-          --field commit_sha="${COMMIT_SHA}" \
-          --field deployed_by="${DEPLOYED_BY}" \
-          --field source_repo="${SOURCE_REPO}" \
-          --field artifact_name="${ARTIFACT_NAME}" \
-          --field artifact_digest="${ARTIFACT_DIGEST}" \
-          --field correlation_id="${correlation_id}" \
-          --field source_run_url="${SOURCE_RUN_URL}"; then
-          echo "::warning title=Event manager notification failed::Could not dispatch receive-event.yml in ministryofjustice/hmpps-eventmanager. The deployment itself succeeded."
-          exit 0
-        fi
-        echo "correlation_id=${correlation_id}" >> "$GITHUB_OUTPUT"
-
     - name: Link to downstream run in job summary
       if: ${{ steps.eventmanager_dispatch.outputs.correlation_id != '' }}
       continue-on-error: true

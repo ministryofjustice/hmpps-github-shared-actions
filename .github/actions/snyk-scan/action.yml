@@ -314,7 +314,7 @@ runs:
         SNYK_POLICY_PATH_INPUT: ${{ inputs.snyk_policy_path }}
         SEVERITY_THRESHOLD: ${{ steps.severity.outputs.threshold }}
       run: |
-        bash "${{ github.action_path }}/run_snyk_fs_scan.sh"
+        python3 "${{ github.action_path }}/run_snyk_fs_scan.py"
 
     - name: Process SARIF for GitHub Security UI
       shell: bash

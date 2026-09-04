@@ -47,6 +47,22 @@ inputs:
     description: "Whether to set the deterministic scheduled downtime cron values"
     required: false
     default: "true"
+  application:
+    description: Logical service name sent to the event manager. Defaults to the k8s deployment name.
+    required: false
+    default: ''
+  artifact_name:
+    description: Name of the built artifact a build-provenance attestation was generated for
+    required: false
+    default: ''
+  artifact_digest:
+    description: "sha256:<digest> of the built artifact a build-provenance attestation was generated for"
+    required: false
+    default: ''
+  eventmanager_private_key:
+    description: Private key of the GitHub App used to dispatch the deployment event (HMPPS_SRE_EVENTMANAGER_PRIVATE_KEY). Leave empty to skip notification.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -132,3 +148,42 @@ runs:
         name: prod-deploy-details
         path: prod-ip-allowlist-version-details.json
         overwrite: true
+
+    - name: Link to downstream run in job summary
+      if: ${{ steps.eventmanager_dispatch.outputs.correlation_id != '' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.eventmanager_app_token.outputs.token }}
+        EVENT_HANDLER_REPO: ministryofjustice/hmpps-eventmanager
+        EVENT_HANDLER_WORKFLOW: receive-event.yml
+        CORRELATION_ID: ${{ steps.eventmanager_dispatch.outputs.correlation_id }}
+      run: |
+        set -uo pipefail
+        run_url=""
+        run_title=""
+
+        # The dispatched run takes a few seconds to appear in the API.
+        for _ in $(seq 1 15); do
+          sleep 2
+          match=$(gh api "repos/${EVENT_HANDLER_REPO}/actions/runs?per_page=10" \
+            --jq "[.workflow_runs[] | select(.display_title | contains(env.CORRELATION_ID)) | \"\(.html_url)|\(.display_title)\"] | first // empty") || true
+          if [[ -n "${match}" ]]; then
+            run_url="${match%%|*}"
+            run_title="${match#*|}"
+            break
+          fi
+        done
+
+        {
+          echo "### Downstream workflow"
+          if [[ -n "${run_url}" ]]; then
+            echo "Triggered [\`${EVENT_HANDLER_WORKFLOW}\`](${run_url}) (\"${run_title}\") in \`${EVENT_HANDLER_REPO}\`"
+          else
+            echo "Triggered \`${EVENT_HANDLER_WORKFLOW}\` in \`${EVENT_HANDLER_REPO}\` with correlation id \`${CORRELATION_ID}\` (run not found within the poll window - check that repo's Actions tab)"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [[ -z "${run_url}" ]]; then
+          echo "::warning title=Downstream run not found::Dispatched receive-event.yml with correlation id ${CORRELATION_ID} but the run did not appear within the poll window."
+        fi

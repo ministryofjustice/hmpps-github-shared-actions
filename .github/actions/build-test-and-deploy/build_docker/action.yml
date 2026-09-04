@@ -120,7 +120,11 @@ runs:
         BASE_TAG="${{ inputs.docker_registry }}/${{ inputs.registry_org }}/${{ inputs.image_name }}"
 
         if [[ "${{ inputs.docker_registry }}" == "ecr" ]]; then
-          BASE_TAG="${{ inputs.ECR_REGISTRY_URL }}/${{ inputs.image_name }}"
+          if [[ "${{ inputs.push }}" == "true" ]]; then
+            BASE_TAG="${{ inputs.ECR_REGISTRY_URL }}/${{ inputs.image_name }}"
+          else
+            BASE_TAG="${{ inputs.image_name }}"
+          fi
         fi
 
         TAGS="${BASE_TAG}:${{ inputs.app_version }}"

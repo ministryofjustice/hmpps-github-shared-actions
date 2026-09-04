@@ -320,7 +320,7 @@ runs:
       shell: bash
       if: github.actor != 'dependabot[bot]' 
       run: |
-        bash "${{ github.action_path }}/process_snyk_results.sh" process-sarif
+        python3 "${{ github.action_path }}/process_snyk_results.py" process-sarif
 
     - name: Validate SARIF consistency
       shell: bash
@@ -385,4 +385,4 @@ runs:
       id: snyk-summary
       shell: bash
       run: |
-        bash "${{ github.action_path }}/process_snyk_results.sh" prepare-summary
+        python3 "${{ github.action_path }}/process_snyk_results.py" prepare-summary

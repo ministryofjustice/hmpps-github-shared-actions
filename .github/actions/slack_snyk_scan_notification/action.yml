@@ -187,12 +187,12 @@ runs:
         token: ${{ inputs.SLACK_BOT_TOKEN }}
         payload: |
           channel: ${{ inputs.channel_id }}
-          text: "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && 'completed with findings' || 'failed' }}"
+          text: "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && job.status == 'success' && 'completed with findings' || 'failed' }}"
           blocks:
             - type: section
               text:
                 type: mrkdwn
-                text: "${{ inputs.warningOnly == 'true' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && 'completed with findings' || 'failed' }}"
+                text: "${{ inputs.warningOnly == 'true' && job.status == 'success' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && job.status == 'success' && 'completed with findings' || 'failed' }}"
             - type: section
               fields:
                 - type: mrkdwn
@@ -225,12 +225,12 @@ runs:
         token: ${{ inputs.SLACK_BOT_TOKEN }}
         payload: |
           channel: ${{ inputs.channel_id }}
-          text: "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && 'completed with findings' || 'failed' }}"
+          text: "*${{ inputs.title }}* ${{ inputs.warningOnly == 'true' && job.status == 'success' && 'completed with findings' || 'failed' }}"
           blocks:
             - type: section
               text:
                 type: mrkdwn
-                text: "${{ inputs.warningOnly == 'true' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && 'completed with findings' || 'failed' }}"
+                text: "${{ inputs.warningOnly == 'true' && job.status == 'success' && ':warning:' || ':no_entry:' }} Github Workflow ${{ github.workflow }} ${{ inputs.warningOnly == 'true' && job.status == 'success' && 'completed with findings' || 'failed' }}"
             - type: section
               fields:
                 - type: mrkdwn

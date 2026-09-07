@@ -8,6 +8,58 @@ from typing import Any, Dict, List, Optional
 SARIF_PATH = "snyk-results.sarif"
 SNYK_JSON_PATH = "snyk-results.json"
 
+# Snyk/legacy sources can emit different severity labels for the same intent.
+# We normalize them early so all downstream logic (SARIF level, scoring,
+# summaries, sorting) works from one canonical vocabulary.
+SEVERITY_NORMALIZATION = {
+  "error": "high",
+  "moderate": "medium",
+  "warning": "medium",
+  "note": "low",
+  "none": "low",
+  "unknown": "low",
+  "": "low",
+}
+
+# SARIF result.level must use SARIF's severity terms (error/warning/note).
+# GitHub code scanning understands these levels for alert presentation, so we
+# map normalized severities to SARIF-compatible values here.
+SEVERITY_TO_SARIF_LEVEL = {
+  "critical": "error",
+  "high": "error",
+  "medium": "warning",
+  "low": "note",
+  "": "note",
+}
+
+# SARIF `security-severity` is expected as a numeric string. These are
+# representative buckets (not per-vulnerability CVSS calculations) that keep
+# alert ordering and filtering aligned with normalized severity bands.
+SEVERITY_TO_SECURITY_SCORE = {
+  "critical": "9.0",
+  "high": "7.0",
+  "medium": "4.0",
+  "low": "1.0",
+  "": "0.0",
+}
+
+# Used only for deterministic ordering in summaries and top-findings output.
+# Lower rank means higher priority in reports.
+SEVERITY_RANK = {
+  "critical": 0,
+  "high": 1,
+  "medium": 2,
+  "low": 3,
+}
+
+
+def normalize_severity(sev: str) -> str:
+  # Centralized normalization used by multiple input paths.
+  # This avoids subtle drift where JSON parsing, SARIF parsing, and summary
+  # logic might otherwise apply slightly different severity semantics.
+  value = str(sev or "unknown").lower()
+  return SEVERITY_NORMALIZATION.get(value, value)
+
 
 def ensure_sarif_file() -> None:
   if not os.path.exists(SARIF_PATH) or os.path.getsize(SARIF_PATH) == 0:
@@ -167,31 +219,16 @@ def package_of(vuln: Dict[str, Any]) -> str:
 
 
 def vuln_sev(vuln: Dict[str, Any]) -> str:
-  sev = str(vuln.get("severity", "unknown")).lower()
-  return "medium" if sev == "moderate" else sev
+  return normalize_severity(str(vuln.get("severity", "unknown")))
 
 
 def level_of(sev: str) -> str:
-  if sev in {"critical", "high"}:
-    return "error"
-  if sev == "medium":
-    return "warning"
-  if sev == "low":
-    return "note"
-  return "warning"
+  return SEVERITY_TO_SARIF_LEVEL.get(sev, "warning")
 
 
 def security_severity_of(vuln: Dict[str, Any]) -> str:
   sev = vuln_sev(vuln)
-  if sev == "critical":
-    return "9.0"
-  if sev == "high":
-    return "7.0"
-  if sev == "medium":
-    return "4.0"
-  if sev == "low":
-    return "1.0"
-  return "0.0"
+  return SEVERITY_TO_SECURITY_SCORE.get(sev, "0.0")
 
 
 def csv_trimmed(text: str) -> str:
@@ -378,6 +415,15 @@ def process_sarif() -> None:
   existing_results = (
     run.get("results") if isinstance(run.get("results"), list) else []
   )
+  # Enrich existing SARIF findings when possible; otherwise generate a baseline
+  # SARIF result set directly from the Snyk JSON vulnerabilities.
+  # Enrichment fields for existing results:
+  # - message.text: add rule-id prefix and append Package/CVE/CWE/GHSA/
+  #   Disclosure/Ref details when not already present.
+  # - locations[0].physicalLocation.artifactLocation.uri and
+  #   locations[0].physicalLocation.region.startLine: backfill when missing.
+  # - properties.severity, properties.tags, properties.security-severity,
+  #   properties.cve: refresh from the matched vulnerability metadata.
   if existing_results:
     new_results: List[Dict[str, Any]] = []
     for raw_result in existing_results:
@@ -572,6 +618,10 @@ def process_sarif() -> None:
   combined_rules = enriched_rules + [
     rule for rule in existing_rules if isinstance(rule, dict)
   ]
+  # Keep one rule object per rule id, then align result messages and
+  # CVE metadata with the resolved rule entries.
+  # Example: if two rule objects share samemake every result with 
+  # ruleId "SNYK-ABC-DEF-123" use that same normalized text and CVE set.
   dedup_rules: List[Dict[str, Any]] = []
   seen_rules = set()
   for rule in combined_rules:
@@ -657,6 +707,9 @@ def process_sarif() -> None:
 
 
 def severity_from_sarif_result(result: Dict[str, Any]) -> str:
+  # SARIF can store severity in either tags/properties or result.level.
+  # We normalize again here because SARIF may come from previous runs/tools,
+  # not only from the JSON->SARIF path in this script.
   properties = (
     result.get("properties") if isinstance(result.get("properties"), dict) else {}
   )
@@ -671,17 +724,13 @@ def severity_from_sarif_result(result: Dict[str, Any]) -> str:
 
   sev = str(
     tag_severity or properties.get("severity") or result.get("level") or "unknown"
-  ).lower()
-  if sev == "error":
-    return "high"
-  if sev == "warning":
-    return "medium"
-  if sev in {"note", "none"}:
-    return "low"
-  return sev
+  )
+  return normalize_severity(sev)
 
 
 def norm_json_sev(vuln: Dict[str, Any]) -> str:
+  # JSON payloads vary by Snyk mode/source; choose first available field and
+  # normalize into the same canonical severity vocabulary used everywhere else.
   sev = (
     vuln.get("severity")
     or vuln.get("effectiveSeverity")
@@ -694,28 +743,11 @@ def norm_json_sev(vuln: Dict[str, Any]) -> str:
     ).get("severity")
     or "unknown"
   )
-  sev = str(sev).lower()
-  if sev == "moderate":
-    return "medium"
-  if sev == "error":
-    return "high"
-  if sev == "warning":
-    return "medium"
-  if sev in {"note", "none"}:
-    return "low"
-  return sev
+  return normalize_severity(str(sev))
 
 
 def severity_rank(sev: str) -> int:
-  if sev == "critical":
-    return 0
-  if sev == "high":
-    return 1
-  if sev == "medium":
-    return 2
-  if sev == "low":
-    return 3
-  return 4
+  return SEVERITY_RANK.get(sev, 4)
 
 
 def prepare_summary() -> None:
@@ -742,6 +774,8 @@ def prepare_summary() -> None:
   snyk_docs = load_json(SNYK_JSON_PATH, None)
   vulns = all_vulns(snyk_docs) if snyk_docs is not None else []
 
+  # Prefer Snyk JSON for counting when available because it usually includes
+  # the most complete vulnerability set.
   if os.path.exists(SNYK_JSON_PATH) and vulns:
     summary_records: List[Dict[str, str]] = []
     seen = set()
@@ -804,6 +838,7 @@ def prepare_summary() -> None:
       )
 
   if not top_findings_lines:
+    # Fallback to SARIF-only findings when JSON input is missing or empty.
     records: List[Dict[str, str]] = []
     for raw in results:
       if not isinstance(raw, dict):

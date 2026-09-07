@@ -258,11 +258,6 @@ def target_file_of(vuln: Dict[str, Any]) -> str:
   )
 
 
-def fingerprint_of(vuln: Dict[str, Any]) -> str:
-  target = target_file_of(vuln) or "n/a"
-  return f"{vuln.get('id', 'issue')}|{package_of(vuln)}|{target}"
-
-
 def location_of(vuln: Dict[str, Any]) -> Dict[str, Any]:
   package_name = package_of(vuln)
   target = target_file_of(vuln)
@@ -476,14 +471,6 @@ def process_sarif() -> None:
       )
       result["properties"] = properties
 
-      partial = (
-        result.get("partialFingerprints")
-        if isinstance(result.get("partialFingerprints"), dict)
-        else {}
-      )
-      partial["primaryLocationLineHash"] = fingerprint_of(vuln)
-      result["partialFingerprints"] = partial
-
       new_results.append(result)
     run["results"] = new_results
   else:
@@ -503,9 +490,6 @@ def process_sarif() -> None:
             "tags": unique_strings([f"severity:{sev}"] + ui_tags(vuln)),
             "security-severity": security_severity_of(vuln),
             "cve": cves_of(vuln) or "n/a",
-          },
-          "partialFingerprints": {
-            "primaryLocationLineHash": fingerprint_of(vuln),
           },
         }
       )

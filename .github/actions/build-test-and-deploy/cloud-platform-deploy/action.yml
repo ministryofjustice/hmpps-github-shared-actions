@@ -105,6 +105,9 @@ runs:
           --set 'generic-service.image.tag=${{ inputs.version }}' \
           --set 'version=${{ inputs.version }}' \
           --set 'global.environment=${{ inputs.environment }}' \
+          --set 'generic-service.gitRepoUrl=${{ github.server_url }}/${{ github.repository }}' \
+          --set 'generic-service.gitCommitSha=${{ github.sha }}' \
+          --set 'generic-service.gitRefName=${{ github.ref_name }}' \
           --timeout ${{ inputs.helm_timeout }} \
           --values '${{ inputs.helm_dir }}/values-${{ inputs.environment }}.yaml' \
           "${helm_args[@]}" \

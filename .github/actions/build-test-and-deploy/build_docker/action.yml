@@ -28,6 +28,10 @@ inputs:
   additional_docker_build_args:
     description: Additional docker build args
     required: false
+  additional_docker_secrets_args: 
+    description: Additional docker build secrets arguments
+    required: false
+    type: string
   file:
     description: "Path to the Dockerfile"
     required: false
@@ -151,6 +155,8 @@ runs:
           "GIT_REF=${{ github.sha }}"
           "GIT_BRANCH=${{ github.ref_name }}"
           "${{ inputs.additional_docker_build_args }}"
+        secret-envs: |
+          ${{ inputs.additional_docker_secrets_args }}
         tags: ${{ steps.set_tags.outputs.tags }}
 
     - name: Export image

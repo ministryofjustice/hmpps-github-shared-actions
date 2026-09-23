@@ -67,7 +67,7 @@ runs:
         correlation_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
         if ! gh workflow run receive-event.yml \
           --repo ministryofjustice/hmpps-eventmanager \
-          --ref sc/hotfix-move-inline-code-to-python \
+          --ref main \
           --field application="${APPLICATION}" \
           --field environment="${ENVIRONMENT}" \
           --field version="${VERSION}" \

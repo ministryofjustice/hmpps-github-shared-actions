@@ -65,9 +65,9 @@ runs:
         fi
 
         correlation_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
-        if ! gh workflow run receive-event.yml \
+        if ! gh workflow run receive-deploy-event.yml \
           --repo ministryofjustice/hmpps-eventmanager \
-          --ref main \
+          --ref hotfix/sc-rename-deploy-workflow \
           --field application="${APPLICATION}" \
           --field environment="${ENVIRONMENT}" \
           --field version="${VERSION}" \

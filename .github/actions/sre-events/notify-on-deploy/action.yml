@@ -1,59 +1,53 @@
-name: Notify hmpps-eventmanager of deployment
-description: Calls a shared workflow via workflow_dispatch in the hmpps-eventmanager repo for downstream processing.
+name: Notify on deploy
+description: Notifies hmpps-eventmanager that a deployment has occurred, so it can be tracked and surfaced downstream.
 
 inputs:
+  application:
+    description: Name of the application that was deployed. Defaults to k8s_deployment_name if not set.
+    required: false
+    default: ''
+  k8s_deployment_name:
+    description: Kubernetes deployment name, used as a fallback for application if it is not set.
+    required: false
+    default: ''
   environment:
-    description: The environment that was deployed to
+    description: Environment the application was deployed to (e.g. dev, preprod, prod).
     required: true
   version:
-    description: The version of the application that was deployed
+    description: Version of the application that was deployed.
     required: true
-  application:
-    description: The name of the application, used in preference to k8s_deployment_name if set
-    required: false
-    default: ""
-  k8s_deployment_name:
-    description: The name of the k8s deployment, used if application is not set
-    required: false
-    default: ""
   artifact_name:
-    description: The name of the deployed artifact
+    description: Name of the deployed artifact (e.g. container image name).
     required: false
-    default: ""
+    default: ''
   artifact_digest:
-    description: The digest of the deployed artifact
+    description: Digest of the deployed artifact (e.g. container image digest).
     required: false
-    default: ""
-  eventmanager_private_key:
-    description: Private key for the hmpps-sre-eventmanager GitHub App
-    required: false
-    default: ""
+    default: ''
   dryrun:
-    description: If 'true', skip notifying hmpps-eventmanager
+    description: If 'true', skips notifying hmpps-eventmanager entirely.
     required: false
-    default: "false"
+    default: 'false'
 
 runs:
   using: composite
   steps:
-    - name: Generate installation token for hmpps-eventmanager app
-      id: eventmanager_app_token
-      if: ${{ inputs.dryrun != 'true' && inputs.eventmanager_private_key != '' }}
+    - name: Federate token via Octo STS
+      id: octo-sts
+      if: ${{ inputs.dryrun != 'true' }}
       continue-on-error: true
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      uses: octo-sts/action@main   # pin to a SHA in practice
       with:
-        app-id: "4738387" # hmpps-sre-eventmanager GitHub App
-        private-key: ${{ inputs.eventmanager_private_key }}
-        owner: ministryofjustice
-        repositories: hmpps-eventmanager
+        scope: ministryofjustice/hmpps-eventmanager
+        identity: deploy-notify
 
     - name: Notify hmpps-eventmanager of deployment
       id: eventmanager_dispatch
-      if: ${{ inputs.dryrun != 'true' && inputs.eventmanager_private_key != '' }}
+      if: ${{ inputs.dryrun != 'true' }}
       continue-on-error: true
       shell: bash
       env:
-        GH_TOKEN: ${{ steps.eventmanager_app_token.outputs.token }}
+        GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
         APPLICATION: ${{ inputs.application != '' && inputs.application || inputs.k8s_deployment_name }}
         ENVIRONMENT: ${{ inputs.environment }}
         VERSION: ${{ inputs.version }}
@@ -71,9 +65,9 @@ runs:
         fi
 
         correlation_id="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
-        if ! gh workflow run receive-event.yml \
+        if ! gh workflow run receive-deploy-event.yml \
           --repo ministryofjustice/hmpps-eventmanager \
-          --ref sc/hotfix-move-inline-code-to-python \
+          --ref v1 \
           --field application="${APPLICATION}" \
           --field environment="${ENVIRONMENT}" \
           --field version="${VERSION}" \
@@ -89,3 +83,41 @@ runs:
         fi
         echo "correlation_id=${correlation_id}" >> "$GITHUB_OUTPUT"
 
+    - name: Link to downstream run in job summary
+      if: ${{ steps.eventmanager_dispatch.outputs.correlation_id != '' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
+        EVENT_HANDLER_REPO: ministryofjustice/hmpps-eventmanager
+        EVENT_HANDLER_WORKFLOW: receive-event.yml
+        CORRELATION_ID: ${{ steps.eventmanager_dispatch.outputs.correlation_id }}
+      run: |
+        set -uo pipefail
+        run_url=""
+        run_title=""
+
+        # The dispatched run takes a few seconds to appear in the API.
+        for _ in $(seq 1 15); do
+          sleep 2
+          match=$(gh api "repos/${EVENT_HANDLER_REPO}/actions/runs?per_page=10" \
+            --jq "[.workflow_runs[] | select(.display_title | contains(env.CORRELATION_ID)) | \"\(.html_url)|\(.display_title)\"] | first // empty") || true
+          if [[ -n "${match}" ]]; then
+            run_url="${match%%|*}"
+            run_title="${match#*|}"
+            break
+          fi
+        done
+
+        {
+          echo "### Downstream workflow"
+          if [[ -n "${run_url}" ]]; then
+            echo "Triggered [\`${EVENT_HANDLER_WORKFLOW}\`](${run_url}) (\"${run_title}\") in \`${EVENT_HANDLER_REPO}\`"
+          else
+            echo "Triggered \`${EVENT_HANDLER_WORKFLOW}\` in \`${EVENT_HANDLER_REPO}\` with correlation id \`${CORRELATION_ID}\` (run not found within the poll window - check that repo's Actions tab)"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [[ -z "${run_url}" ]]; then
+          echo "::warning title=Downstream run not found::Dispatched receive-event.yml with correlation id ${CORRELATION_ID} but the run did not appear within the poll window."
+        fi

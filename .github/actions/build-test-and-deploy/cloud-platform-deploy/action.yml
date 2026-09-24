@@ -59,10 +59,6 @@ inputs:
     description: "sha256:<digest> of the built artifact a build-provenance attestation was generated for"
     required: false
     default: ''
-  eventmanager_private_key:
-    description: Private key of the GitHub App used to dispatch the deployment event (HMPPS_SRE_EVENTMANAGER_PRIVATE_KEY). Leave empty to skip notification.
-    required: false
-    default: ''
 
 runs:
   using: composite

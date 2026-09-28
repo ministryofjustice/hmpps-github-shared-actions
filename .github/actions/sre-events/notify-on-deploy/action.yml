@@ -36,7 +36,7 @@ runs:
       id: octo-sts
       if: ${{ inputs.dryrun != 'true' }}
       continue-on-error: true
-      uses: octo-sts/action@main   # pin to a SHA in practice
+      uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
       with:
         scope: ministryofjustice/hmpps-eventmanager
         identity: deploy-notify

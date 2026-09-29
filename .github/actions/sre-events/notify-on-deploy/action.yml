@@ -3,11 +3,11 @@ description: Notifies hmpps-eventmanager that a deployment has occurred, so it c
 
 inputs:
   application:
-    description: Name of the application that was deployed. Defaults to k8s_deployment_name if not set.
+    description: Name of the application that was deployed. Defaults to k8s_deployment_name, then github.repository if neither is set.
     required: false
     default: ''
   k8s_deployment_name:
-    description: Kubernetes deployment name, used as a fallback for application if it is not set.
+    description: Kubernetes deployment name, used as a fallback for application if it is not set. Defaults to github.repository if not set.
     required: false
     default: ''
   environment:
@@ -48,7 +48,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
-        APPLICATION: ${{ inputs.application != '' && inputs.application || inputs.k8s_deployment_name }}
+        APPLICATION: ${{ inputs.application != '' && inputs.application || inputs.k8s_deployment_name != '' && inputs.k8s_deployment_name || github.repository }}
         ENVIRONMENT: ${{ inputs.environment }}
         VERSION: ${{ inputs.version }}
         COMMIT_SHA: ${{ github.sha }}

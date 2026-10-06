@@ -113,7 +113,7 @@ Optional variables:
 ```yaml
 jobs:
   example:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Run shared action
         uses: ministryofjustice/hmpps-github-shared-actions/.github/actions/snyk-scan@<SHA>

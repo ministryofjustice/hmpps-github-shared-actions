@@ -127,7 +127,8 @@ runs:
           BASE_TAG="${{ inputs.ECR_REGISTRY_URL }}/${{ inputs.image_name }}"
         fi
 
-        TAGS="${BASE_TAG}:${{ inputs.app_version }}"
+        IMAGE_REF="${BASE_TAG}:${{ inputs.app_version }}"
+        TAGS="${IMAGE_REF}"
 
         if [[ "${{ inputs.tag_latest }}" == "true" ]]; then
           TAGS="${TAGS},${BASE_TAG}:latest"
@@ -137,6 +138,7 @@ runs:
           TAGS="${TAGS},${BASE_TAG}:${{ inputs.additional_docker_tag }}"
         fi
 
+        echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
         echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
     - name: Build Docker Image
@@ -163,7 +165,9 @@ runs:
       if: ${{ inputs.upload_image_artifact ==  'true' }}
       id: export_image
       shell: bash
-      run: docker save ${{ inputs.docker_registry }}/${{ inputs.registry_org }}/${{ inputs.image_name }}:${{ inputs.app_version }} -o ${{ runner.temp }}/build_image.tar
+      env:
+        IMAGE_REF: ${{ steps.set_tags.outputs.image_ref }}
+      run: docker save "$IMAGE_REF" -o "${{ runner.temp }}/build_image.tar"
 
     - name: Upload image to artifacts
       if: ${{ inputs.upload_image_artifact ==  'true' }}

@@ -68,8 +68,7 @@ Key behavior:
 
 Authentication inputs:
 
-- OAuth client credentials via `client_id` and `client_secret`, or
-- Token auth via `snyk_token`.
+- OAuth client credentials via `client_id` and `client_secret`
 
 ## Slack Snyk notification quick reference
 

@@ -137,12 +137,6 @@ def print_debug_block_or_tail(path: Path) -> None:
 def main() -> int:
   env = dict(os.environ)
 
-  snyk_token = env.get("SNYK_TOKEN", "")
-  if snyk_token:
-    env["SNYK_TOKEN"] = snyk_token.replace("\r", "").replace("\n", "")
-  else:
-    env.pop("SNYK_TOKEN", None)
-
   scan_location = Path(env.get("SCAN_LOCATION", "."))
   severity_threshold = env.get("SEVERITY_THRESHOLD", "high")
   policy_path_input = env.get("SNYK_POLICY_PATH_INPUT", "")

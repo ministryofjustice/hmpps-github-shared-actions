@@ -30,9 +30,6 @@ inputs:
     description: 'GitHub token for authentication'
     required: false
     default: ''
-  snyk_token:
-    description: 'Snyk token for authentication'
-    required: false
   client_id:
     description: 'Snyk client ID for authentication'
     required: false
@@ -144,26 +141,6 @@ runs:
           exit 1
         else
           echo "Snyk authentication successful with client credentials."
-        fi
-
-    - name: Snyk authentication using API token
-      if: github.actor != 'dependabot[bot]' && inputs.snyk_token != '' && (inputs.client_id == '' || inputs.client_secret == '')
-      shell: bash
-      env:
-        SNYK_TOKEN: ${{ inputs.snyk_token }}
-      run: |
-        token="$(printf '%s' "$SNYK_TOKEN" | tr -d '\r\n')"
-        if [[ -z "$token" ]]; then
-          echo "SNYK_TOKEN is empty. Configure a valid token in repository/org secrets."
-          exit 1
-        fi
-
-        if ! snyk auth --token "$token" >/dev/null 2>&1; then
-          echo "Snyk authentication failed. Check API token and org access, and confirm secret values are current."
-          exit 1
-        else
-          echo "SNYK_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "Snyk authentication successful with API token."
         fi
 
     - name: Resolve severity threshold

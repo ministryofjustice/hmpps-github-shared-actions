@@ -83,7 +83,7 @@ runs:
           -db ${{ inputs.database_name }} \
           -host ${{ inputs.host }} \
           -port ${{ inputs.port }} \
-          -s ${{ inputs.schema }} \
+          -schemas ${{ inputs.schema }} \
           -vizjs \
           -u ${{ inputs.user }} \
           -p ${{ inputs.password }} \
